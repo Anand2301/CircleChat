@@ -23,7 +23,6 @@
 **/.flutter-plugins-dependencies
 **/build/
 **/.packages
-**/pubspec.lock
 
 # Android generated and signing files
 **/.gradle/
