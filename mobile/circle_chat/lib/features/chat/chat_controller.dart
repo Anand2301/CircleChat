@@ -62,6 +62,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
   }
 
   void _subscribeSignalR() {
+    SignalRService.instance.ensureConnected();
     SignalRService.instance.joinConversation(conversationId);
 
     _unsubscribers.add(SignalRService.instance.addMessageListener((data) {
@@ -130,18 +131,40 @@ class ChatNotifier extends StateNotifier<ChatState> {
       if (!mounted) return;
 
       if (data is List) {
-        final list = data.map((json) => MessageModel.fromJson(json)).toList();
-        list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-        state = state.copyWith(isLoading: false, messages: list);
+        final history = data.map((json) => MessageModel.fromJson(json)).toList();
+
+        // Merge history with any messages that arrived via SignalR or optimistic send while request was in-flight
+        final Map<String, MessageModel> byId = {};
+        for (final m in history) {
+          if (m.id.isNotEmpty) {
+            byId[m.id] = m;
+          }
+        }
+        for (final m in state.messages) {
+          if (m.id.isNotEmpty) {
+            final existing = byId[m.id];
+            if (existing == null) {
+              byId[m.id] = m;
+            } else {
+              final preferCurrent = m.deliveryStatus > existing.deliveryStatus ||
+                  (m.updatedAt != null && (existing.updatedAt == null || m.updatedAt!.isAfter(existing.updatedAt!)));
+              byId[m.id] = preferCurrent ? m : existing;
+            }
+          }
+        }
+
+        final merged = byId.values.toList();
+        merged.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        state = state.copyWith(isLoading: false, messages: merged);
 
         // Mark unread messages as read
-        for (final m in list) {
+        for (final m in merged) {
           if (m.senderId != currentUserId && m.deliveryStatus < 2) {
             markAsRead(m.id);
           }
         }
       } else {
-        state = state.copyWith(isLoading: false, messages: const []);
+        state = state.copyWith(isLoading: false);
       }
     } catch (e) {
       if (!mounted) return;
@@ -437,9 +460,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
 final chatProvider =
     StateNotifierProvider.family<ChatNotifier, ChatState, String>((ref, conversationId) {
-  final user = ref.watch(authProvider).user;
+  final currentUserId = ref.watch(authProvider.select((s) => s.user?.id)) ?? '';
   return ChatNotifier(
     conversationId: conversationId,
-    currentUserId: user?.id ?? '',
+    currentUserId: currentUserId,
   );
 });

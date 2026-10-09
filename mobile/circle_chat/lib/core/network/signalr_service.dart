@@ -31,6 +31,13 @@ class SignalRService {
   final Set<String> _activeConversationIds = {};
   Set<String> get activeConversationIds => Set.unmodifiable(_activeConversationIds);
 
+  Completer<void>? _connectingCompleter;
+  bool _isExplicitlyDisconnected = false;
+  Timer? _reconnectTimer;
+  int _reconnectAttempts = 0;
+  static const int _maxReconnectAttempts = 12;
+  static const List<int> _backoffDelaysSeconds = [2, 4, 8, 15, 30];
+
   // Event callbacks
   final List<OnMessageReceivedCallback> _messageCallbacks = [];
   final List<OnMessageEditedCallback> _editCallbacks = [];
@@ -85,10 +92,22 @@ class SignalRService {
   Future<void> connect() async {
     if (_isConnected && _hubConnection?.state == HubConnectionState.Connected) return;
 
-    final token = await TokenStorage.getAccessToken();
-    if (token == null || token.isEmpty) return;
+    if (_connectingCompleter != null && !_connectingCompleter!.isCompleted) {
+      return _connectingCompleter!.future;
+    }
+
+    final completer = Completer<void>();
+    _connectingCompleter = completer;
+    _isExplicitlyDisconnected = false;
 
     try {
+      final token = await TokenStorage.getAccessToken();
+      if (token == null || token.isEmpty) {
+        _isConnected = false;
+        _connectionStateController.add(false);
+        return;
+      }
+
       if (_hubConnection != null) {
         try {
           await _hubConnection?.stop();
@@ -96,30 +115,43 @@ class SignalRService {
         _hubConnection = null;
       }
 
-      final url = '${ApiConstants.signalRHubUrl}?access_token=$token';
-
+      // Use dynamic token retrieval on each connection / reconnection without baking static token into query string
       _hubConnection = HubConnectionBuilder()
-          .withUrl(url, options: HttpConnectionOptions(
-            accessTokenFactory: () => Future.value(token),
-            transport: HttpTransportType.WebSockets,
-            logMessageContent: false,
-          ))
+          .withUrl(
+            ApiConstants.signalRHubUrl,
+            options: HttpConnectionOptions(
+              accessTokenFactory: () async {
+                final latestToken = await TokenStorage.getAccessToken();
+                return latestToken ?? '';
+              },
+              transport: HttpTransportType.WebSockets,
+              logMessageContent: false,
+            ),
+          )
           .withAutomaticReconnect()
           .build();
 
       _registerHubHandlers();
 
       _hubConnection?.onclose(({error}) {
+        debugPrint('[SignalR] Connection closed. Error: $error');
         _isConnected = false;
         _connectionStateController.add(false);
+        if (!_isExplicitlyDisconnected) {
+          _scheduleBoundedReconnect();
+        }
       });
 
       _hubConnection?.onreconnecting(({error}) {
+        debugPrint('[SignalR] Connection reconnecting. Error: $error');
         _isConnected = false;
         _connectionStateController.add(false);
       });
 
       _hubConnection?.onreconnected(({connectionId}) async {
+        debugPrint('[SignalR] Connection reconnected with id: $connectionId');
+        _reconnectAttempts = 0;
+        _reconnectTimer?.cancel();
         _isConnected = true;
         _connectionStateController.add(true);
         await _restoreSubscriptions();
@@ -127,21 +159,57 @@ class SignalRService {
       });
 
       await _hubConnection?.start();
+      _reconnectAttempts = 0;
+      _reconnectTimer?.cancel();
       _isConnected = true;
       _connectionStateController.add(true);
       await _restoreSubscriptions();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[SignalR] Connect error: $e');
       _isConnected = false;
       _connectionStateController.add(false);
+      if (!_isExplicitlyDisconnected) {
+        _scheduleBoundedReconnect();
+      }
+    } finally {
+      if (!completer.isCompleted) {
+        completer.complete();
+      }
+      _connectingCompleter = null;
     }
   }
 
-  Future<void> ensureConnected() async {
-    if (!_isConnected ||
-        _hubConnection == null ||
-        _hubConnection?.state == HubConnectionState.Disconnected) {
-      await connect();
+  void _scheduleBoundedReconnect() {
+    _reconnectTimer?.cancel();
+    if (_isExplicitlyDisconnected || _isConnected) return;
+
+    if (_reconnectAttempts >= _maxReconnectAttempts) {
+      debugPrint('[SignalR] Max reconnect attempts reached ($_maxReconnectAttempts). Pausing auto-retry.');
+      return;
     }
+
+    final delayIndex = _reconnectAttempts < _backoffDelaysSeconds.length
+        ? _reconnectAttempts
+        : _backoffDelaysSeconds.length - 1;
+    final delay = Duration(seconds: _backoffDelaysSeconds[delayIndex]);
+    _reconnectAttempts++;
+
+    debugPrint('[SignalR] Scheduling bounded reconnect attempt $_reconnectAttempts in ${delay.inSeconds}s');
+    _reconnectTimer = Timer(delay, () async {
+      if (!_isExplicitlyDisconnected && !_isConnected) {
+        await connect();
+      }
+    });
+  }
+
+  Future<void> ensureConnected() async {
+    if (_isConnected && _hubConnection?.state == HubConnectionState.Connected) return;
+
+    if (_connectingCompleter != null && !_connectingCompleter!.isCompleted) {
+      return _connectingCompleter!.future;
+    }
+
+    await connect();
   }
 
   Map<String, dynamic> _safeMap(dynamic raw) {
@@ -346,6 +414,9 @@ class SignalRService {
   }
 
   Future<void> disconnect() async {
+    _isExplicitlyDisconnected = true;
+    _reconnectTimer?.cancel();
+    _reconnectAttempts = 0;
     try {
       await _hubConnection?.stop();
     } catch (_) {}

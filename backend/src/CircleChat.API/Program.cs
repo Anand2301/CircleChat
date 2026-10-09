@@ -87,7 +87,12 @@ builder.Services.SwaggerDocument(o =>
 });
 
 // 5. SignalR
-builder.Services.AddSignalR();
+builder.Services.AddSignalR(options =>
+{
+    options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+    options.ClientTimeoutInterval = TimeSpan.FromSeconds(30);
+    options.HandshakeTimeout = TimeSpan.FromSeconds(15);
+});
 
 // 6. CORS
 builder.Services.AddCors(options =>

@@ -7,6 +7,7 @@ import '../../core/constants/api_constants.dart';
 import '../../core/models/models.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/push_notification_service.dart';
+import '../../core/network/signalr_service.dart';
 import '../../core/storage/token_storage.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/avatar_widget.dart';
@@ -38,6 +39,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     PushNotificationService.instance.activeConversationId = widget.conversation.id;
+    SignalRService.instance.ensureConnected();
     _loadCurrentUserId();
     _scrollController.addListener(_onScroll);
     _textController.addListener(_handleTextChanged);
@@ -52,6 +54,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       PushNotificationService.instance.activeConversationId = widget.conversation.id;
+      SignalRService.instance.ensureConnected();
       ref.read(chatProvider(widget.conversation.id).notifier).syncMissedMessages();
       ref.read(conversationsProvider.notifier).markConversationRead(widget.conversation.id);
     } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {

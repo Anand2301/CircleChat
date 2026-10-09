@@ -6,6 +6,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../constants/api_constants.dart';
 import '../models/models.dart';
 import '../network/api_client.dart';
+import '../network/signalr_service.dart';
 import '../storage/token_storage.dart';
 import '../../features/chat/chat_screen.dart';
 
@@ -207,6 +208,9 @@ class PushNotificationService with WidgetsBindingObserver {
   Future<void> navigateToConversation(String conversationId) async {
     final navState = _navigatorKey?.currentState;
     if (navState == null) return;
+
+    // Ensure SignalR connection is active or reconnecting when notification opens a conversation
+    SignalRService.instance.ensureConnected();
 
     final targetId = conversationId.trim().toLowerCase();
     // Prevent duplicate navigation if user is already actively viewing this conversation

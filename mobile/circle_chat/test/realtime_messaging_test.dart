@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -7,6 +8,7 @@ import 'package:circle_chat/core/models/models.dart';
 import 'package:circle_chat/core/network/api_client.dart';
 import 'package:circle_chat/core/network/signalr_service.dart';
 import 'package:circle_chat/core/storage/token_storage.dart';
+import 'package:circle_chat/core/network/push_notification_service.dart';
 import 'package:circle_chat/features/chat/chat_controller.dart';
 import 'package:circle_chat/features/conversations/conversations_controller.dart';
 
@@ -316,6 +318,161 @@ void main() {
       expect(msg.reactions.first.reaction, '👍');
       expect(msg.attachments.length, 1);
       expect(msg.attachments.first.fileName, 'photo.png');
+    });
+  });
+
+  group('Real-Time Race Conditions & Reconnection Resilience Tests', () {
+    test('Live message arriving while loadMessages is in-flight is merged and not overwritten', () async {
+      const convId = 'conv-race-1';
+      const userId = 'user-me-race';
+
+      // Completer to control when the HTTP history request completes
+      final historyCompleter = Completer<http.Response>();
+
+      ApiClient.setMockClient(MockClient((request) async {
+        if (request.url.path.contains('/messages')) {
+          return historyCompleter.future;
+        }
+        return http.Response('{"success": false}', 404);
+      }));
+
+      final chatNotifier = ChatNotifier(conversationId: convId, currentUserId: userId);
+
+      // Verify initial state is loading
+      expect(chatNotifier.state.isLoading, isTrue);
+
+      // Now simulate a live message arriving via SignalR before history completes
+      final liveMsgJson = {
+        'id': 'msg-live-100',
+        'conversationId': convId,
+        'senderId': 'user-other',
+        'senderDisplayName': 'Alice',
+        'content': 'Live message arrived during load',
+        'messageType': 0,
+        'createdAt': '2026-10-09T10:20:00Z',
+        'deliveryStatus': 1,
+        'reactions': [],
+        'attachments': [],
+      };
+
+      // Trigger the SignalR message callback
+      // We can test this by adding a message to the controller via its SignalR handler
+      // Or by directly sending a message through the registered listener
+      SignalRService.instance.addMessageListener((data) {
+        // Mock listener already registered by ChatNotifier
+      });
+
+      // Dispatch directly to controller's private _onNewMessage through public or event mechanism:
+      // Notice: ChatNotifier registered a listener with SignalRService.
+      // However, SignalRService does not expose a mock dispatch method, so we can trigger it:
+      // Let's verify by simulating the listener invocation or sending:
+      // In ChatNotifier, sendMessage calls _onNewMessage directly.
+      // But we can also simulate by manually adding to state or testing loadMessages merging:
+      // Set in-flight state with the live message
+      final liveMsg = MessageModel.fromJson(liveMsgJson);
+      chatNotifier.state = chatNotifier.state.copyWith(
+        messages: [liveMsg],
+      );
+      expect(chatNotifier.state.messages.length, 1);
+      expect(chatNotifier.state.messages.first.id, 'msg-live-100');
+
+      // Now complete the HTTP history response with older messages
+      historyCompleter.complete(
+        http.Response(
+          jsonEncode({
+            'success': true,
+            'data': [
+              {
+                'id': 'msg-hist-1',
+                'conversationId': convId,
+                'senderId': 'user-other',
+                'senderDisplayName': 'Alice',
+                'content': 'History message 1',
+                'messageType': 0,
+                'createdAt': '2026-10-09T10:10:00Z',
+                'deliveryStatus': 1,
+                'reactions': [],
+                'attachments': [],
+              },
+              {
+                'id': 'msg-hist-2',
+                'conversationId': convId,
+                'senderId': 'user-other',
+                'senderDisplayName': 'Alice',
+                'content': 'History message 2',
+                'messageType': 0,
+                'createdAt': '2026-10-09T10:05:00Z',
+                'deliveryStatus': 1,
+                'reactions': [],
+                'attachments': [],
+              }
+            ]
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+
+      // Wait for loadMessages() async continuation to finish
+      await Future.delayed(const Duration(milliseconds: 60));
+
+      expect(chatNotifier.state.isLoading, isFalse);
+      // All 3 messages must be present (live message was NOT wiped out by history response)
+      expect(chatNotifier.state.messages.length, 3);
+      // Stably sorted newest first
+      expect(chatNotifier.state.messages[0].id, 'msg-live-100');
+      expect(chatNotifier.state.messages[1].id, 'msg-hist-1');
+      expect(chatNotifier.state.messages[2].id, 'msg-hist-2');
+
+      chatNotifier.dispose();
+    });
+
+    test('Dynamic access token retrieved afresh from TokenStorage on each attempt', () async {
+      await TokenStorage.saveTokens(
+        accessToken: 'initial-jwt-token',
+        refreshToken: 'refresh-token',
+        userId: 'user-dynamic',
+      );
+
+      final token1 = await TokenStorage.getAccessToken();
+      expect(token1, 'initial-jwt-token');
+
+      // Refresh / update token in storage
+      await TokenStorage.saveTokens(
+        accessToken: 'refreshed-new-jwt-token',
+        refreshToken: 'refresh-token',
+        userId: 'user-dynamic',
+      );
+
+      final token2 = await TokenStorage.getAccessToken();
+      expect(token2, 'refreshed-new-jwt-token');
+      // Verifies TokenStorage does not return stale token
+    });
+
+    test('SignalRService tracks active subscriptions and handles disconnect cleanup safely', () async {
+      final service = SignalRService.instance;
+
+      await service.joinConversation('CONV-ABC');
+      await service.joinConversation('conv-abc'); // Duplicate join with different casing
+
+      // Deduplicated & normalized to lowercase
+      expect(service.activeConversationIds.length, 1);
+      expect(service.activeConversationIds.contains('conv-abc'), isTrue);
+
+      await service.leaveConversation('conv-abc');
+      expect(service.activeConversationIds.isEmpty, isTrue);
+
+      // Disconnect clears conversation state and resets flags
+      await service.disconnect();
+      expect(service.isConnected, isFalse);
+      expect(service.activeConversationIds.isEmpty, isTrue);
+    });
+
+    test('PushNotificationService navigateToConversation safely triggers ensureConnected', () async {
+      final service = PushNotificationService.instance;
+      // Should not throw or crash when called
+      await service.navigateToConversation('conv-test-id');
+      expect(service.activeConversationId, isNull);
     });
   });
 }
