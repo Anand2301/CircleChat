@@ -1,0 +1,43 @@
+
+# Secrets and environment files
+.env
+.env.*
+!.env.example
+**/appsettings.Development.json
+**/appsettings.Production.json
+**/*service-account*.json
+**/*firebase-adminsdk*.json
+**/google-services.json
+**/GoogleService-Info.plist
+
+# .NET
+**/bin/
+**/obj/
+.vs/
+*.user
+*.suo
+
+# Flutter / Dart
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/build/
+**/.packages
+**/pubspec.lock
+
+# Android generated and signing files
+**/.gradle/
+**/local.properties
+**/*.jks
+**/*.keystore
+**/key.properties
+
+# IDE
+.idea/
+.vscode/
+
+# Logs and temporary files
+*.log
+*.tmp
+.DS_Store
+Thumbs.db

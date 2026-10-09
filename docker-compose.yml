@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: circlechat-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-CircleChat}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-YourSecurePostgresPasswordHere}
+    ports:
+      - "5432:5432"
+    volumes:
+      - circlechat_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d CircleChat"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: circlechat-api
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "5000:5000"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=${POSTGRES_DB:-CircleChat};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:-YourSecurePostgresPasswordHere}
+      - Jwt__Secret=${JWT_SECRET:-super_secret_jwt_signing_key_at_least_32_characters_long_12345}
+      - Jwt__Issuer=${JWT_ISSUER:-CircleChatAPI}
+      - Jwt__Audience=${JWT_AUDIENCE:-CircleChatClients}
+      - Firebase__ProjectId=${FIREBASE_PROJECT_ID:-csharp-dsa-masterclass}
+      - Firebase__StorageBucket=${FIREBASE_STORAGE_BUCKET:-csharp-dsa-masterclass.firebasestorage.app}
+      - Server__BaseUrl=http://localhost:5000
+    volumes:
+      - circlechat_uploads:/app/wwwroot/uploads
+
+volumes:
+  circlechat_pgdata:
+  circlechat_uploads:

@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CircleChat.API/CircleChat.API.csproj" />
+    <Project Path="src/CircleChat.Application/CircleChat.Application.csproj" />
+    <Project Path="src/CircleChat.Domain/CircleChat.Domain.csproj" />
+    <Project Path="src/CircleChat.Infrastructure/CircleChat.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CircleChat.IntegrationTests/CircleChat.IntegrationTests.csproj" />
+    <Project Path="tests/CircleChat.UnitTests/CircleChat.UnitTests.csproj" />
+  </Folder>
+</Solution>
