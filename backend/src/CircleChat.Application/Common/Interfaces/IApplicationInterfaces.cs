@@ -44,6 +44,10 @@ public interface IFileStorage
         string folder,
         CancellationToken cancellationToken = default);
 
+    Task<(Stream Stream, string ContentType, string FileName)?> GetFileAsync(
+        string storagePath,
+        CancellationToken cancellationToken = default);
+
     Task DeleteFileAsync(string storagePath, CancellationToken cancellationToken = default);
 }
 

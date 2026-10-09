@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/network/push_notification_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/circle_chat_logo.dart';
 import 'auth_controller.dart';
 import 'login_screen.dart';
 import '../home/home_screen.dart';
@@ -46,61 +47,36 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
       _checkState(next);
     });
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Scaffold(
-      backgroundColor: isDark ? AppTheme.darkScaffold : AppTheme.lightScaffold,
+      backgroundColor: AppTheme.midnightBackground,
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              width: 88,
-              height: 88,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF007AFF), Color(0xFF5856D6)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.primaryColor.withValues(alpha: 0.28),
-                    blurRadius: 24,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.forum_rounded,
-                size: 46,
-                color: Colors.white,
-              ),
-            ),
+            const CircleChatLogo(size: 96, borderRadius: 26),
             const SizedBox(height: 28),
-            Text(
+            const Text(
               'CircleChat',
               style: TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.w800,
                 letterSpacing: -0.6,
-                color: isDark ? AppTheme.darkTextPrimary : AppTheme.lightTextPrimary,
+                color: AppTheme.primaryText,
               ),
             ),
             const SizedBox(height: 8),
-            Text(
+            const Text(
               'Private, invite-only conversations',
               style: TextStyle(
                 fontSize: 14.5,
-                color: isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary,
+                color: AppTheme.secondaryText,
               ),
             ),
-            const SizedBox(height: 40),
+            const SizedBox(height: 48),
             const SizedBox(
               width: 24,
               height: 24,
-              child: CircularProgressIndicator(strokeWidth: 2.5, color: AppTheme.primaryColor),
+              child: CircularProgressIndicator(strokeWidth: 2.5, color: AppTheme.mintAccent),
             ),
           ],
         ),

@@ -5,7 +5,7 @@ namespace CircleChat.Domain.Entities;
 public class Attachment
 {
     public Guid Id { get; set; } = Guid.NewGuid();
-    public Guid MessageId { get; set; }
+    public Guid? MessageId { get; set; }
     public string FileName { get; set; } = string.Empty;
     public string StoragePath { get; set; } = string.Empty;
     public string ContentType { get; set; } = string.Empty;
@@ -13,7 +13,7 @@ public class Attachment
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation
-    public Message Message { get; set; } = null!;
+    public Message? Message { get; set; }
 }
 
 public class RefreshToken

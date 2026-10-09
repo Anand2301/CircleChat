@@ -14,6 +14,7 @@ import '../../core/widgets/avatar_widget.dart';
 import '../../core/widgets/typing_indicator.dart';
 import '../conversations/conversations_controller.dart';
 import 'chat_controller.dart';
+import 'image_viewer_screen.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   final ConversationModel conversation;
@@ -132,6 +133,80 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
     } finally {
       if (mounted) setState(() => _isUploading = false);
     }
+  }
+
+  void _showAttachmentOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return SafeArea(
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            decoration: BoxDecoration(
+              color: AppTheme.elevatedSurface,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: AppTheme.dividerColor, width: 0.8),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.4),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 18),
+                  decoration: BoxDecoration(
+                    color: AppTheme.secondaryText.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppTheme.mintAccent.withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.photo_library_rounded, color: AppTheme.mintAccent, size: 22),
+                  ),
+                  title: const Text('Photo Library', style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.primaryText)),
+                  subtitle: const Text('Share photos and pictures', style: TextStyle(color: AppTheme.secondaryText, fontSize: 12.5)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _handlePickImage(ImageSource.gallery);
+                  },
+                ),
+                const SizedBox(height: 6),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppTheme.paleBlue.withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.camera_alt_rounded, color: AppTheme.paleBlue, size: 22),
+                  ),
+                  title: const Text('Camera', style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.primaryText)),
+                  subtitle: const Text('Capture and send a photo instantly', style: TextStyle(color: AppTheme.secondaryText, fontSize: 12.5)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _handlePickImage(ImageSource.camera);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _showReactionSheet(MessageModel message) {
@@ -450,12 +525,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
     );
 
     final bubbleColor = isMe
-        ? (isDark ? AppTheme.darkBubbleMe : AppTheme.lightBubbleMe)
-        : (isDark ? AppTheme.darkBubbleOther : AppTheme.lightBubbleOther);
+        ? AppTheme.mintAccent
+        : AppTheme.elevatedSurface;
 
     final textColor = isMe
-        ? Colors.white
-        : (isDark ? AppTheme.darkTextPrimary : AppTheme.lightTextPrimary);
+        ? AppTheme.midnightBackground
+        : AppTheme.primaryText;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2.5),
@@ -470,6 +545,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
               decoration: BoxDecoration(
                 color: bubbleColor,
                 borderRadius: bubbleRadius,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -480,10 +562,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
                       padding: const EdgeInsets.only(bottom: 3),
                       child: Text(
                         message.senderDisplayName,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w700,
-                          color: isDark ? AppTheme.primaryDark : AppTheme.primaryColor,
+                          color: AppTheme.mintAccent,
                         ),
                       ),
                     ),
@@ -494,12 +576,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                       decoration: BoxDecoration(
                         color: isMe
-                            ? Colors.black.withValues(alpha: 0.15)
-                            : (isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.05)),
+                            ? Colors.black.withValues(alpha: 0.12)
+                            : Colors.white.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(8),
                         border: Border(
                           left: BorderSide(
-                            color: isMe ? Colors.white : AppTheme.primaryColor,
+                            color: isMe ? AppTheme.midnightBackground : AppTheme.mintAccent,
                             width: 3,
                           ),
                         ),
@@ -512,7 +594,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
-                              color: isMe ? Colors.white : (isDark ? Colors.white : Colors.black87),
+                              color: isMe ? AppTheme.midnightBackground : AppTheme.primaryText,
                             ),
                           ),
                           const SizedBox(height: 1),
@@ -522,7 +604,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 11,
-                              color: isMe ? Colors.white70 : (isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary),
+                              color: isMe
+                                  ? AppTheme.midnightBackground.withValues(alpha: 0.7)
+                                  : AppTheme.secondaryText,
                             ),
                           ),
                         ],
@@ -532,15 +616,54 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
                   if (message.messageType == 1 && message.attachments.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 6),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Image.network(
-                          message.attachments.first.downloadUrl,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => Container(
-                            height: 120,
-                            color: Colors.grey.withValues(alpha: 0.2),
-                            child: const Center(child: Icon(Icons.broken_image_rounded, size: 36)),
+                      child: GestureDetector(
+                        onTap: () {
+                          final rawUrl = message.attachments.first.downloadUrl;
+                          final fullUrl = rawUrl.startsWith('http') ? rawUrl : '${ApiConstants.baseUrl}$rawUrl';
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => ImageViewerScreen(
+                                imageUrl: fullUrl,
+                                fileName: message.attachments.first.fileName.isNotEmpty
+                                    ? message.attachments.first.fileName
+                                    : 'Photo',
+                              ),
+                            ),
+                          );
+                        },
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(14),
+                          child: Hero(
+                            tag: 'img_${message.id}_${message.attachments.first.id}',
+                            child: Image.network(
+                              message.attachments.first.downloadUrl.startsWith('http')
+                                  ? message.attachments.first.downloadUrl
+                                  : '${ApiConstants.baseUrl}${message.attachments.first.downloadUrl}',
+                              fit: BoxFit.cover,
+                              loadingBuilder: (context, child, progress) {
+                                if (progress == null) return child;
+                                return Container(
+                                  height: 180,
+                                  color: Colors.black.withValues(alpha: 0.15),
+                                  child: Center(
+                                    child: CircularProgressIndicator(
+                                      value: progress.expectedTotalBytes != null
+                                          ? progress.cumulativeBytesLoaded / progress.expectedTotalBytes!
+                                          : null,
+                                      strokeWidth: 2,
+                                      color: isMe ? AppTheme.midnightBackground : AppTheme.mintAccent,
+                                    ),
+                                  ),
+                                );
+                              },
+                              errorBuilder: (_, _, _) => Container(
+                                height: 120,
+                                color: Colors.black.withValues(alpha: 0.15),
+                                child: const Center(
+                                  child: Icon(Icons.broken_image_rounded, size: 36, color: AppTheme.secondaryText),
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -567,8 +690,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
                         style: TextStyle(
                           fontSize: 10.5,
                           color: isMe
-                              ? Colors.white.withValues(alpha: 0.75)
-                              : (isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary),
+                              ? AppTheme.midnightBackground.withValues(alpha: 0.65)
+                              : AppTheme.secondaryText,
                         ),
                       ),
                       if (isMe) ...[
@@ -579,8 +702,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
                               : (message.deliveryStatus == 1 ? Icons.done_all_rounded : Icons.done_rounded),
                           size: 14,
                           color: message.deliveryStatus == 2
-                              ? const Color(0xFF38BDF8) // Cyan read ticks
-                              : Colors.white.withValues(alpha: 0.75),
+                              ? const Color(0xFF0D9488)
+                              : AppTheme.midnightBackground.withValues(alpha: 0.65),
                         ),
                       ],
                     ],
@@ -672,94 +795,116 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
   }
 
   Widget _buildInputBar() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-      decoration: BoxDecoration(
-        color: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
+      decoration: const BoxDecoration(
+        color: AppTheme.elevatedSurface,
         border: Border(
           top: BorderSide(
-            color: isDark ? AppTheme.darkDivider : AppTheme.lightDivider,
-            width: 0.5,
+            color: AppTheme.dividerColor,
+            width: 0.8,
           ),
         ),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          IconButton(
-            icon: Container(
-              padding: const EdgeInsets.all(5),
-              decoration: BoxDecoration(
-                color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.05),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.add_photo_alternate_rounded,
-                size: 20,
-                color: isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary,
-              ),
-            ),
-            tooltip: 'Add Image',
-            onPressed: () => _handlePickImage(ImageSource.gallery),
-          ),
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: isDark ? AppTheme.darkInputFill : AppTheme.lightInputFill,
-                borderRadius: BorderRadius.circular(22),
-              ),
-              child: TextField(
-                controller: _textController,
-                minLines: 1,
-                maxLines: 5,
-                style: TextStyle(
-                  fontSize: 15.5,
-                  color: isDark ? AppTheme.darkTextPrimary : AppTheme.lightTextPrimary,
-                ),
-                onChanged: (val) {
-                  if (val.trim().isNotEmpty) {
-                    ref.read(chatProvider(widget.conversation.id).notifier).startTyping();
-                  } else {
-                    ref.read(chatProvider(widget.conversation.id).notifier).stopTyping();
-                  }
-                },
-                decoration: InputDecoration(
-                  hintText: 'Message...',
-                  hintStyle: TextStyle(
-                    color: isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary,
-                    fontSize: 15,
+          if (_isUploading)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8, left: 8, right: 8),
+              child: Row(
+                children: [
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.mintAccent),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  filled: false,
-                  isDense: true,
-                ),
+                  const SizedBox(width: 10),
+                  const Text(
+                    'Uploading photo...',
+                    style: TextStyle(fontSize: 12.5, color: AppTheme.secondaryText, fontWeight: FontWeight.w500),
+                  ),
+                ],
               ),
             ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            margin: const EdgeInsets.only(bottom: 2),
-            child: Material(
-              color: _hasText ? AppTheme.primaryColor : (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
-              shape: const CircleBorder(),
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: _hasText ? _handleSend : null,
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Icon(
-                    Icons.arrow_upward_rounded,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              IconButton(
+                icon: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: AppTheme.mintAccent.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.add_photo_alternate_rounded,
                     size: 20,
-                    color: _hasText ? Colors.white : (isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8)),
+                    color: AppTheme.mintAccent,
+                  ),
+                ),
+                tooltip: 'Add Image',
+                onPressed: _showAttachmentOptions,
+              ),
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppTheme.inputFillColor,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: AppTheme.dividerColor, width: 0.6),
+                  ),
+                  child: TextField(
+                    controller: _textController,
+                    minLines: 1,
+                    maxLines: 5,
+                    style: const TextStyle(
+                      fontSize: 15.5,
+                      color: AppTheme.primaryText,
+                    ),
+                    onChanged: (val) {
+                      if (val.trim().isNotEmpty) {
+                        ref.read(chatProvider(widget.conversation.id).notifier).startTyping();
+                      } else {
+                        ref.read(chatProvider(widget.conversation.id).notifier).stopTyping();
+                      }
+                    },
+                    decoration: const InputDecoration(
+                      hintText: 'Message...',
+                      hintStyle: TextStyle(
+                        color: AppTheme.secondaryText,
+                        fontSize: 15,
+                      ),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      filled: false,
+                      isDense: true,
+                    ),
                   ),
                 ),
               ),
-            ),
+              const SizedBox(width: 8),
+              Container(
+                margin: const EdgeInsets.only(bottom: 2),
+                child: Material(
+                  color: _hasText ? AppTheme.mintAccent : const Color(0xFF22323D),
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: _hasText ? _handleSend : null,
+                    child: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Icon(
+                        Icons.arrow_upward_rounded,
+                        size: 20,
+                        color: _hasText ? AppTheme.midnightBackground : AppTheme.secondaryText,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),

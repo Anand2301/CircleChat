@@ -164,17 +164,37 @@ class _ConversationsTabState extends ConsumerState<_ConversationsTab> {
       return nameMatches || lastMsgMatches;
     }).toList();
 
+    final authUser = ref.watch(authProvider).user;
+    final firstName = (authUser?.displayName ?? authUser?.fullName ?? '').trim().split(' ').first;
+    final greeting = firstName.isNotEmpty ? 'Hey, $firstName 👋' : 'Hey there 👋';
+
     return Scaffold(
       backgroundColor: isDark ? AppTheme.darkScaffold : AppTheme.lightScaffold,
       appBar: AppBar(
         scrolledUnderElevation: 0.5,
-        title: const Text(
-          'Chats',
-          style: TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.8,
-          ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              greeting,
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
+                color: AppTheme.mintAccent,
+              ),
+            ),
+            const Text(
+              'CircleChat',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.secondaryText,
+                letterSpacing: -0.2,
+              ),
+            ),
+          ],
         ),
         actions: [
           IconButton(
@@ -370,15 +390,21 @@ class _ConversationsTabState extends ConsumerState<_ConversationsTab> {
                                                 Expanded(
                                                   child: Text(
                                                     lastMsg != null
-                                                        ? (lastMsg.isDeleted ? 'This message was deleted' : lastMsg.content)
+                                                        ? (lastMsg.isDeleted
+                                                            ? 'This message was deleted'
+                                                            : (lastMsg.messageType == 1
+                                                                ? '📷 Photo'
+                                                                : (lastMsg.messageType == 2
+                                                                    ? '📎 Attachment'
+                                                                    : (lastMsg.content.isNotEmpty ? lastMsg.content : '📷 Photo'))))
                                                         : 'No messages yet',
                                                     maxLines: 1,
                                                     overflow: TextOverflow.ellipsis,
                                                     style: TextStyle(
                                                       fontSize: 14,
                                                       color: conv.unreadCount > 0
-                                                          ? (isDark ? AppTheme.darkTextPrimary : AppTheme.lightTextPrimary)
-                                                          : (isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary),
+                                                          ? AppTheme.primaryText
+                                                          : AppTheme.secondaryText,
                                                       fontWeight: conv.unreadCount > 0 ? FontWeight.w600 : FontWeight.normal,
                                                     ),
                                                   ),
@@ -388,13 +414,13 @@ class _ConversationsTabState extends ConsumerState<_ConversationsTab> {
                                                     margin: const EdgeInsets.only(left: 8),
                                                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                                                     decoration: BoxDecoration(
-                                                      color: AppTheme.primaryColor,
+                                                      color: AppTheme.mintAccent,
                                                       borderRadius: BorderRadius.circular(10),
                                                     ),
                                                     child: Text(
                                                       '${conv.unreadCount}',
                                                       style: const TextStyle(
-                                                        color: Colors.white,
+                                                        color: AppTheme.midnightBackground,
                                                         fontSize: 11,
                                                         fontWeight: FontWeight.w700,
                                                       ),

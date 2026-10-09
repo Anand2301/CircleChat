@@ -132,6 +132,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             entity.HasOne(a => a.Message)
                 .WithMany(m => m.Attachments)
                 .HasForeignKey(a => a.MessageId)
+                .IsRequired(false)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

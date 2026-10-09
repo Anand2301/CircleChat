@@ -213,6 +213,7 @@ public class SendMessageEndpoint : Endpoint<SendMessageRequest, ApiResponse<Mess
         };
 
         // Attach existing uploaded attachments if any
+        var attachedList = new List<Attachment>();
         if (req.AttachmentIds != null && req.AttachmentIds.Count > 0)
         {
             var attachments = await _dbContext.Attachments
@@ -223,6 +224,7 @@ public class SendMessageEndpoint : Endpoint<SendMessageRequest, ApiResponse<Mess
             {
                 att.MessageId = message.Id;
             }
+            attachedList = attachments;
         }
 
         _dbContext.Messages.Add(message);
@@ -259,7 +261,16 @@ public class SendMessageEndpoint : Endpoint<SendMessageRequest, ApiResponse<Mess
                 Content = replyMsg.Content
             } : null,
             CreatedAt = message.CreatedAt,
-            DeliveryStatus = 0
+            DeliveryStatus = 0,
+            Attachments = attachedList.Select(a => new AttachmentDto
+            {
+                Id = a.Id,
+                FileName = a.FileName,
+                StoragePath = a.StoragePath,
+                DownloadUrl = a.StoragePath,
+                ContentType = a.ContentType,
+                FileSize = a.FileSize
+            }).ToList()
         };
 
         // Query active conversation members for real-time delivery and push notifications
