@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../core/constants/api_constants.dart';
 import '../../core/models/models.dart';
 import '../../core/network/api_client.dart';
+import '../../core/network/push_notification_service.dart';
 import '../../core/network/signalr_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/avatar_widget.dart';
@@ -29,11 +30,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     SignalRService.instance.ensureConnected();
+    PushNotificationService.instance.onConversationListRefreshNeeded = () {
+      if (mounted) {
+        ref.read(conversationsProvider.notifier).loadConversations();
+      }
+    };
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    PushNotificationService.instance.onConversationListRefreshNeeded = null;
     super.dispose();
   }
 
@@ -185,12 +192,12 @@ class _ConversationsTabState extends ConsumerState<_ConversationsTab> {
                 color: AppTheme.mintAccent,
               ),
             ),
-            const Text(
+            Text(
               'CircleChat',
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: AppTheme.secondaryText,
+                color: isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary,
                 letterSpacing: -0.2,
               ),
             ),
@@ -403,8 +410,8 @@ class _ConversationsTabState extends ConsumerState<_ConversationsTab> {
                                                     style: TextStyle(
                                                       fontSize: 14,
                                                       color: conv.unreadCount > 0
-                                                          ? AppTheme.primaryText
-                                                          : AppTheme.secondaryText,
+                                                          ? (isDark ? AppTheme.darkTextPrimary : AppTheme.lightTextPrimary)
+                                                          : (isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary),
                                                       fontWeight: conv.unreadCount > 0 ? FontWeight.w600 : FontWeight.normal,
                                                     ),
                                                   ),
@@ -414,13 +421,13 @@ class _ConversationsTabState extends ConsumerState<_ConversationsTab> {
                                                     margin: const EdgeInsets.only(left: 8),
                                                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                                                     decoration: BoxDecoration(
-                                                      color: AppTheme.mintAccent,
+                                                      color: isDark ? AppTheme.mintAccent : AppTheme.lightAccent,
                                                       borderRadius: BorderRadius.circular(10),
                                                     ),
                                                     child: Text(
                                                       '${conv.unreadCount}',
-                                                      style: const TextStyle(
-                                                        color: AppTheme.midnightBackground,
+                                                      style: TextStyle(
+                                                        color: isDark ? AppTheme.midnightBackground : Colors.white,
                                                         fontSize: 11,
                                                         fontWeight: FontWeight.w700,
                                                       ),

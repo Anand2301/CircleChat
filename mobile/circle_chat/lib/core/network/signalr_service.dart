@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:signalr_netcore/signalr_client.dart';
 import '../constants/api_constants.dart';
@@ -115,10 +116,14 @@ class SignalRService {
         _hubConnection = null;
       }
 
-      // Use dynamic token retrieval on each connection / reconnection without baking static token into query string
+      final hubUrl = token.isNotEmpty
+          ? '${ApiConstants.signalRHubUrl}?access_token=${Uri.encodeComponent(token)}'
+          : ApiConstants.signalRHubUrl;
+
+      // Use dynamic token retrieval on each connection / reconnection with dual query+header support
       _hubConnection = HubConnectionBuilder()
           .withUrl(
-            ApiConstants.signalRHubUrl,
+            hubUrl,
             options: HttpConnectionOptions(
               accessTokenFactory: () async {
                 final latestToken = await TokenStorage.getAccessToken();
@@ -217,6 +222,14 @@ class SignalRService {
     if (raw is Map<String, dynamic>) return raw;
     if (raw is Map) {
       return raw.map((key, value) => MapEntry(key.toString(), value));
+    }
+    if (raw is String && raw.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw.trim());
+        if (decoded is Map) {
+          return decoded.map((key, value) => MapEntry(key.toString(), value));
+        }
+      } catch (_) {}
     }
     return {};
   }

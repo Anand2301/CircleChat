@@ -6,6 +6,7 @@ import '../../core/models/models.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/signalr_service.dart';
 import '../authentication/auth_controller.dart';
+import '../conversations/conversations_controller.dart';
 
 class ChatState {
   final bool isLoading;
@@ -51,11 +52,12 @@ class ChatState {
 class ChatNotifier extends StateNotifier<ChatState> {
   final String conversationId;
   final String currentUserId;
+  final Ref? ref;
 
   final List<VoidCallback> _unsubscribers = [];
   StreamSubscription? _reconnectSubscription;
 
-  ChatNotifier({required this.conversationId, required this.currentUserId})
+  ChatNotifier({required this.conversationId, required this.currentUserId, this.ref})
       : super(ChatState(isLoading: true)) {
     loadMessages();
     _subscribeSignalR();
@@ -157,6 +159,12 @@ class ChatNotifier extends StateNotifier<ChatState> {
         merged.sort((a, b) => b.createdAt.compareTo(a.createdAt));
         state = state.copyWith(isLoading: false, messages: merged);
 
+        if (merged.isNotEmpty) {
+          try {
+            ref?.read(conversationsProvider.notifier).updateLastMessage(merged.first);
+          } catch (_) {}
+        }
+
         // Mark unread messages as read
         for (final m in merged) {
           if (m.senderId != currentUserId && m.deliveryStatus < 2) {
@@ -195,6 +203,10 @@ class ChatNotifier extends StateNotifier<ChatState> {
           final merged = [...newOnly, ...state.messages];
           merged.sort((a, b) => b.createdAt.compareTo(a.createdAt));
           state = state.copyWith(messages: merged);
+
+          try {
+            ref?.read(conversationsProvider.notifier).updateLastMessage(merged.first);
+          } catch (_) {}
 
           for (final m in newOnly) {
             if (m.senderId != currentUserId && m.deliveryStatus < 2) {
@@ -323,6 +335,11 @@ class ChatNotifier extends StateNotifier<ChatState> {
     // Keep ordering stable: newest first
     updated.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     state = state.copyWith(messages: updated);
+
+    // Synchronize with conversation list preview immediately
+    try {
+      ref?.read(conversationsProvider.notifier).updateLastMessage(msg);
+    } catch (_) {}
 
     // If incoming message from other user and viewing this chat, mark read
     if (msg.senderId != currentUserId) {
@@ -464,5 +481,6 @@ final chatProvider =
   return ChatNotifier(
     conversationId: conversationId,
     currentUserId: currentUserId,
+    ref: ref,
   );
 });

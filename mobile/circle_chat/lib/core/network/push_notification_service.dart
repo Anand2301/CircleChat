@@ -30,6 +30,9 @@ class PushNotificationService with WidgetsBindingObserver {
   String? _pendingConversationId;
   bool _isInitialized = false;
 
+  VoidCallback? onSyncActiveConversation;
+  VoidCallback? onConversationListRefreshNeeded;
+
   AppLifecycleState _lifecycleState = AppLifecycleState.resumed;
   bool get isInForeground => _lifecycleState == AppLifecycleState.resumed;
   String? get pendingConversationId => _pendingConversationId;
@@ -150,18 +153,26 @@ class PushNotificationService with WidgetsBindingObserver {
   }
 
   void _handleForegroundMessage(RemoteMessage message) {
-    // If not in foreground, Android native FCM payload handles the notification shade
-    if (!isInForeground) return;
-
     final data = message.data;
     final convId = data['conversationId']?.toString();
 
-    // If viewing this exact conversation, suppress heads-up notification (SignalR handles live UI)
+    // Trigger conversation-list refresh if callback registered
+    try {
+      onConversationListRefreshNeeded?.call();
+    } catch (_) {}
+
+    // If viewing this exact conversation, trigger active chat sync and suppress heads-up notification
     if (convId != null &&
         activeConversationId != null &&
         convId.trim().toLowerCase() == activeConversationId!.trim().toLowerCase()) {
+      try {
+        onSyncActiveConversation?.call();
+      } catch (_) {}
       return;
     }
+
+    // If not in foreground, Android native FCM payload handles the notification shade
+    if (!isInForeground) return;
 
     // Determine notification title and body
     final title = message.notification?.title ??

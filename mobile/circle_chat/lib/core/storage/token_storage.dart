@@ -37,13 +37,14 @@ class TokenStorage {
     try {
       final token = await _storage.read(key: _keyAccessToken);
       if (token != null && token.isNotEmpty) return token;
-    } catch (_) {
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        final token = prefs.getString(_keyAccessToken);
-        if (token != null && token.isNotEmpty) return token;
-      } catch (_) {}
-    }
+    } catch (_) {}
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString(_keyAccessToken);
+      if (token != null && token.isNotEmpty) return token;
+    } catch (_) {}
+
     return _inMemoryFallback[_keyAccessToken];
   }
 
@@ -51,13 +52,14 @@ class TokenStorage {
     try {
       final token = await _storage.read(key: _keyRefreshToken);
       if (token != null && token.isNotEmpty) return token;
-    } catch (_) {
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        final token = prefs.getString(_keyRefreshToken);
-        if (token != null && token.isNotEmpty) return token;
-      } catch (_) {}
-    }
+    } catch (_) {}
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString(_keyRefreshToken);
+      if (token != null && token.isNotEmpty) return token;
+    } catch (_) {}
+
     return _inMemoryFallback[_keyRefreshToken];
   }
 
@@ -65,13 +67,14 @@ class TokenStorage {
     try {
       final id = await _storage.read(key: _keyUserId);
       if (id != null && id.isNotEmpty) return id;
-    } catch (_) {
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        final id = prefs.getString(_keyUserId);
-        if (id != null && id.isNotEmpty) return id;
-      } catch (_) {}
-    }
+    } catch (_) {}
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final id = prefs.getString(_keyUserId);
+      if (id != null && id.isNotEmpty) return id;
+    } catch (_) {}
+
     return _inMemoryFallback[_keyUserId];
   }
 

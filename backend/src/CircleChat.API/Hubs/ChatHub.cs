@@ -26,8 +26,9 @@ public class ChatHub : Hub
         var userId = CurrentUserId;
         if (!string.IsNullOrEmpty(userId))
         {
+            var normUserId = userId.Trim().ToLowerInvariant();
             await _presenceService.SetUserOnlineAsync(userId, Context.ConnectionId);
-            await Groups.AddToGroupAsync(Context.ConnectionId, $"user_{userId}");
+            await Groups.AddToGroupAsync(Context.ConnectionId, $"user_{normUserId}");
 
             // Auto-subscribe connection to all authorized conversations for this user
             var userConversations = await _dbContext.ConversationMembers
@@ -37,7 +38,7 @@ public class ChatHub : Hub
 
             foreach (var convId in userConversations)
             {
-                await Groups.AddToGroupAsync(Context.ConnectionId, $"conv_{convId}");
+                await Groups.AddToGroupAsync(Context.ConnectionId, $"conv_{convId.ToString().ToLowerInvariant()}");
             }
 
             // Notify all clients of online presence
@@ -82,13 +83,13 @@ public class ChatHub : Hub
 
         if (isMember)
         {
-            await Groups.AddToGroupAsync(Context.ConnectionId, $"conv_{conversationId}");
+            await Groups.AddToGroupAsync(Context.ConnectionId, $"conv_{conversationId.ToString().ToLowerInvariant()}");
         }
     }
 
     public async Task LeaveConversation(Guid conversationId)
     {
-        await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"conv_{conversationId}");
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"conv_{conversationId.ToString().ToLowerInvariant()}");
     }
 
     public async Task StartTyping(Guid conversationId)
@@ -97,7 +98,7 @@ public class ChatHub : Hub
         if (string.IsNullOrEmpty(userId)) return;
 
         var displayName = Context.User?.FindFirst(ClaimTypes.Name)?.Value ?? "Someone";
-        await Clients.Group($"conv_{conversationId}").SendAsync("UserTyping", conversationId, userId, displayName, true);
+        await Clients.Group($"conv_{conversationId.ToString().ToLowerInvariant()}").SendAsync("UserTyping", conversationId, userId, displayName, true);
     }
 
     public async Task StopTyping(Guid conversationId)
@@ -106,7 +107,7 @@ public class ChatHub : Hub
         if (string.IsNullOrEmpty(userId)) return;
 
         var displayName = Context.User?.FindFirst(ClaimTypes.Name)?.Value ?? "Someone";
-        await Clients.Group($"conv_{conversationId}").SendAsync("UserTyping", conversationId, userId, displayName, false);
+        await Clients.Group($"conv_{conversationId.ToString().ToLowerInvariant()}").SendAsync("UserTyping", conversationId, userId, displayName, false);
     }
 }
 
@@ -121,29 +122,40 @@ public class SignalRNotifier : ISignalRNotifier
 
     public Task NotifyNewMessageAsync(Guid conversationId, object messageDto, IEnumerable<string>? memberUserIds = null)
     {
-        if (memberUserIds != null && memberUserIds.Any())
+        var normConvId = conversationId.ToString().ToLowerInvariant();
+        var groups = new List<string> { $"conv_{normConvId}" };
+
+        if (memberUserIds != null)
         {
-            var groups = memberUserIds.Select(id => $"user_{id}").Append($"conv_{conversationId}").Distinct().ToList();
-            return _hubContext.Clients.Groups(groups).SendAsync("ReceiveMessage", messageDto);
+            var validUserIds = memberUserIds
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Select(id => id.Trim())
+                .ToList();
+
+            groups.AddRange(validUserIds.Select(id => $"user_{id.ToLowerInvariant()}"));
+
+            var allTargets = groups.Distinct().ToList();
+            return _hubContext.Clients.Groups(allTargets).SendAsync("ReceiveMessage", messageDto);
         }
-        return _hubContext.Clients.Group($"conv_{conversationId}").SendAsync("ReceiveMessage", messageDto);
+
+        return _hubContext.Clients.Group($"conv_{normConvId}").SendAsync("ReceiveMessage", messageDto);
     }
 
     public Task NotifyMessageEditedAsync(Guid conversationId, Guid messageId, string newContent, DateTime updatedAt) =>
-        _hubContext.Clients.Group($"conv_{conversationId}").SendAsync("MessageEdited", messageId, newContent, updatedAt);
+        _hubContext.Clients.Group($"conv_{conversationId.ToString().ToLowerInvariant()}").SendAsync("MessageEdited", messageId, newContent, updatedAt);
 
     public Task NotifyMessageDeletedAsync(Guid conversationId, Guid messageId) =>
-        _hubContext.Clients.Group($"conv_{conversationId}").SendAsync("MessageDeleted", messageId);
+        _hubContext.Clients.Group($"conv_{conversationId.ToString().ToLowerInvariant()}").SendAsync("MessageDeleted", messageId);
 
     public Task NotifyReactionUpdatedAsync(Guid conversationId, Guid messageId, string reaction, string userId, bool added) =>
-        _hubContext.Clients.Group($"conv_{conversationId}").SendAsync("ReactionUpdated", messageId, reaction, userId, added);
+        _hubContext.Clients.Group($"conv_{conversationId.ToString().ToLowerInvariant()}").SendAsync("ReactionUpdated", messageId, reaction, userId, added);
 
     public Task NotifyUserTypingAsync(Guid conversationId, string userId, string displayName, bool isTyping) =>
-        _hubContext.Clients.Group($"conv_{conversationId}").SendAsync("UserTyping", conversationId, userId, displayName, isTyping);
+        _hubContext.Clients.Group($"conv_{conversationId.ToString().ToLowerInvariant()}").SendAsync("UserTyping", conversationId, userId, displayName, isTyping);
 
     public Task NotifyPresenceChangedAsync(string userId, bool isOnline, DateTime? lastSeenAt) =>
         _hubContext.Clients.All.SendAsync("UserPresenceChanged", userId, isOnline, lastSeenAt);
 
     public Task NotifyMessageReadAsync(Guid conversationId, Guid messageId, string userId, DateTime readAt) =>
-        _hubContext.Clients.Group($"conv_{conversationId}").SendAsync("MessageRead", messageId, userId, readAt);
+        _hubContext.Clients.Group($"conv_{conversationId.ToString().ToLowerInvariant()}").SendAsync("MessageRead", messageId, userId, readAt);
 }

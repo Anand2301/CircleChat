@@ -6,6 +6,7 @@ import '../../core/models/models.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/signalr_service.dart';
 import '../../core/storage/token_storage.dart';
+import '../authentication/auth_controller.dart';
 
 class ConversationsState {
   final bool isLoading;
@@ -36,14 +37,20 @@ class ConversationsNotifier extends StateNotifier<ConversationsState> {
   StreamSubscription? _reconnectSubscription;
   String? _currentUserId;
 
-  ConversationsNotifier() : super(ConversationsState(isLoading: true)) {
-    _initUserId();
+  ConversationsNotifier({String this._currentUserId = ''}) : super(ConversationsState(isLoading: true)) {
+    if (_currentUserId == null || _currentUserId!.isEmpty) {
+      _initUserId();
+    }
     loadConversations();
     _subscribeToSignalR();
   }
 
   Future<void> _initUserId() async {
     _currentUserId = await TokenStorage.getUserId();
+  }
+
+  void updateLastMessage(MessageModel msg) {
+    _handleIncomingMessage(msg);
   }
 
   void _subscribeToSignalR() {
@@ -218,5 +225,6 @@ class ConversationsNotifier extends StateNotifier<ConversationsState> {
 
 final conversationsProvider =
     StateNotifierProvider<ConversationsNotifier, ConversationsState>((ref) {
-  return ConversationsNotifier();
+  final currentUserId = ref.watch(authProvider.select((s) => s.user?.id)) ?? '';
+  return ConversationsNotifier(currentUserId: currentUserId);
 });

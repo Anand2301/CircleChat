@@ -1,3 +1,37 @@
+int _parseInt(dynamic val, [int defaultValue = 0]) {
+  if (val == null) return defaultValue;
+  if (val is int) return val;
+  if (val is num) return val.toInt();
+  if (val is String) {
+    final lower = val.trim().toLowerCase();
+    if (lower == 'text') return 0;
+    if (lower == 'image') return 1;
+    if (lower == 'file') return 2;
+    if (lower == 'audio') return 3;
+    if (lower == 'system') return 4;
+    return int.tryParse(val.trim()) ?? defaultValue;
+  }
+  return defaultValue;
+}
+
+bool _parseBool(dynamic val, [bool defaultValue = false]) {
+  if (val == null) return defaultValue;
+  if (val is bool) return val;
+  if (val is num) return val != 0;
+  if (val is String) {
+    final lower = val.trim().toLowerCase();
+    if (lower == 'true' || lower == '1') return true;
+    if (lower == 'false' || lower == '0') return false;
+  }
+  return defaultValue;
+}
+
+DateTime _parseDateTime(dynamic val) {
+  if (val == null) return DateTime.now();
+  if (val is DateTime) return val;
+  return DateTime.tryParse(val.toString()) ?? DateTime.now();
+}
+
 class UserModel {
   final String id;
   final String email;
@@ -22,18 +56,26 @@ class UserModel {
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
+    final id = (json['id'] ?? json['Id'])?.toString() ?? '';
+    final email = (json['email'] ?? json['Email'])?.toString() ?? '';
+    final fullName = (json['fullName'] ?? json['FullName'])?.toString() ?? '';
+    final displayName = (json['displayName'] ?? json['DisplayName'])?.toString() ?? fullName;
+    final bio = (json['bio'] ?? json['Bio'])?.toString();
+    final profileImageUrl = (json['profileImageUrl'] ?? json['ProfileImageUrl'])?.toString();
+    final isOnline = _parseBool(json['isOnline'] ?? json['IsOnline']);
+    final lastSeen = json['lastSeenAt'] ?? json['LastSeenAt'];
+    final createdAt = json['createdAt'] ?? json['CreatedAt'];
+
     return UserModel(
-      id: json['id'] as String? ?? '',
-      email: json['email'] as String? ?? '',
-      fullName: json['fullName'] as String? ?? '',
-      displayName: json['displayName'] as String? ?? '',
-      bio: json['bio'] as String?,
-      profileImageUrl: json['profileImageUrl'] as String?,
-      isOnline: json['isOnline'] as bool? ?? false,
-      lastSeenAt: json['lastSeenAt'] != null ? DateTime.tryParse(json['lastSeenAt'].toString()) : null,
-      createdAt: json['createdAt'] != null
-          ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
-          : DateTime.now(),
+      id: id,
+      email: email,
+      fullName: fullName,
+      displayName: displayName.isNotEmpty ? displayName : 'User',
+      bio: bio,
+      profileImageUrl: profileImageUrl,
+      isOnline: isOnline,
+      lastSeenAt: lastSeen != null ? DateTime.tryParse(lastSeen.toString()) : null,
+      createdAt: _parseDateTime(createdAt),
     );
   }
 }
@@ -56,13 +98,20 @@ class UserSearchResult {
   });
 
   factory UserSearchResult.fromJson(Map<String, dynamic> json) {
+    final id = (json['id'] ?? json['Id'])?.toString() ?? '';
+    final displayName = (json['displayName'] ?? json['DisplayName'])?.toString() ?? '';
+    final fullName = (json['fullName'] ?? json['FullName'])?.toString() ?? '';
+    final email = (json['email'] ?? json['Email'])?.toString() ?? '';
+    final profileImageUrl = (json['profileImageUrl'] ?? json['ProfileImageUrl'])?.toString();
+    final isOnline = _parseBool(json['isOnline'] ?? json['IsOnline']);
+
     return UserSearchResult(
-      id: json['id'] as String? ?? '',
-      displayName: json['displayName'] as String? ?? '',
-      fullName: json['fullName'] as String? ?? '',
-      email: json['email'] as String? ?? '',
-      profileImageUrl: json['profileImageUrl'] as String?,
-      isOnline: json['isOnline'] as bool? ?? false,
+      id: id,
+      displayName: displayName.isNotEmpty ? displayName : fullName,
+      fullName: fullName,
+      email: email,
+      profileImageUrl: profileImageUrl,
+      isOnline: isOnline,
     );
   }
 }
@@ -85,15 +134,20 @@ class ConversationMemberModel {
   });
 
   factory ConversationMemberModel.fromJson(Map<String, dynamic> json) {
+    final userId = (json['userId'] ?? json['UserId'])?.toString() ?? '';
+    final displayName = (json['displayName'] ?? json['DisplayName'])?.toString() ?? 'Member';
+    final profileImageUrl = (json['profileImageUrl'] ?? json['ProfileImageUrl'])?.toString();
+    final role = _parseInt(json['role'] ?? json['Role'], 0);
+    final joinedAt = json['joinedAt'] ?? json['JoinedAt'];
+    final isOnline = _parseBool(json['isOnline'] ?? json['IsOnline']);
+
     return ConversationMemberModel(
-      userId: json['userId'] as String? ?? '',
-      displayName: json['displayName'] as String? ?? 'Member',
-      profileImageUrl: json['profileImageUrl'] as String?,
-      role: json['role'] as int? ?? 0,
-      joinedAt: json['joinedAt'] != null
-          ? DateTime.tryParse(json['joinedAt'].toString()) ?? DateTime.now()
-          : DateTime.now(),
-      isOnline: json['isOnline'] as bool? ?? false,
+      userId: userId,
+      displayName: displayName,
+      profileImageUrl: profileImageUrl,
+      role: role,
+      joinedAt: _parseDateTime(joinedAt),
+      isOnline: isOnline,
     );
   }
 }
@@ -124,23 +178,30 @@ class ConversationModel {
   });
 
   factory ConversationModel.fromJson(Map<String, dynamic> json) {
+    final id = (json['id'] ?? json['Id'])?.toString() ?? '';
+    final type = _parseInt(json['type'] ?? json['Type'], 0);
+    final name = (json['name'] ?? json['Name'])?.toString() ?? 'Conversation';
+    final description = (json['description'] ?? json['Description'])?.toString();
+    final imageUrl = (json['imageUrl'] ?? json['ImageUrl'])?.toString();
+    final createdAt = json['createdAt'] ?? json['CreatedAt'];
+    final updatedAt = json['updatedAt'] ?? json['UpdatedAt'];
+    final lastMsgRaw = json['lastMessage'] ?? json['LastMessage'];
+    final unreadCount = _parseInt(json['unreadCount'] ?? json['UnreadCount'], 0);
+    final membersRaw = (json['members'] ?? json['Members']) as List<dynamic>? ?? [];
+
     return ConversationModel(
-      id: json['id'] as String? ?? '',
-      type: json['type'] as int? ?? 0,
-      name: json['name'] as String? ?? 'Conversation',
-      description: json['description'] as String?,
-      imageUrl: json['imageUrl'] as String?,
-      createdAt: json['createdAt'] != null
-          ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
-          : DateTime.now(),
-      updatedAt: json['updatedAt'] != null
-          ? DateTime.tryParse(json['updatedAt'].toString()) ?? DateTime.now()
-          : DateTime.now(),
-      lastMessage: json['lastMessage'] != null && json['lastMessage'] is Map
-          ? MessageModel.fromJson(Map<String, dynamic>.from(json['lastMessage'] as Map))
+      id: id,
+      type: type,
+      name: name,
+      description: description,
+      imageUrl: imageUrl,
+      createdAt: _parseDateTime(createdAt),
+      updatedAt: _parseDateTime(updatedAt),
+      lastMessage: lastMsgRaw != null && lastMsgRaw is Map
+          ? MessageModel.fromJson(Map<String, dynamic>.from(lastMsgRaw))
           : null,
-      unreadCount: json['unreadCount'] as int? ?? 0,
-      members: (json['members'] as List<dynamic>? ?? [])
+      unreadCount: unreadCount,
+      members: membersRaw
           .whereType<Map>()
           .map((m) => ConversationMemberModel.fromJson(Map<String, dynamic>.from(m)))
           .toList(),
@@ -166,13 +227,20 @@ class AttachmentModel {
   });
 
   factory AttachmentModel.fromJson(Map<String, dynamic> json) {
+    final id = (json['id'] ?? json['Id'])?.toString() ?? '';
+    final fileName = (json['fileName'] ?? json['FileName'])?.toString() ?? '';
+    final storagePath = (json['storagePath'] ?? json['StoragePath'])?.toString() ?? '';
+    final downloadUrl = (json['downloadUrl'] ?? json['DownloadUrl'] ?? storagePath)?.toString() ?? '';
+    final contentType = (json['contentType'] ?? json['ContentType'])?.toString() ?? '';
+    final fileSize = _parseInt(json['fileSize'] ?? json['FileSize'], 0);
+
     return AttachmentModel(
-      id: json['id'] as String? ?? '',
-      fileName: json['fileName'] as String? ?? '',
-      storagePath: json['storagePath'] as String? ?? '',
-      downloadUrl: json['downloadUrl'] as String? ?? '',
-      contentType: json['contentType'] as String? ?? '',
-      fileSize: json['fileSize'] as int? ?? 0,
+      id: id,
+      fileName: fileName,
+      storagePath: storagePath,
+      downloadUrl: downloadUrl,
+      contentType: contentType,
+      fileSize: fileSize,
     );
   }
 }
@@ -193,14 +261,18 @@ class MessageReactionModel {
   });
 
   factory MessageReactionModel.fromJson(Map<String, dynamic> json) {
+    final id = (json['id'] ?? json['Id'])?.toString() ?? '';
+    final userId = (json['userId'] ?? json['UserId'])?.toString() ?? '';
+    final displayName = (json['displayName'] ?? json['DisplayName'])?.toString() ?? 'User';
+    final reaction = (json['reaction'] ?? json['Reaction'])?.toString() ?? '';
+    final createdAt = json['createdAt'] ?? json['CreatedAt'];
+
     return MessageReactionModel(
-      id: json['id'] as String? ?? '',
-      userId: json['userId'] as String? ?? '',
-      displayName: json['displayName'] as String? ?? '',
-      reaction: json['reaction'] as String? ?? '',
-      createdAt: json['createdAt'] != null
-          ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
-          : DateTime.now(),
+      id: id,
+      userId: userId,
+      displayName: displayName,
+      reaction: reaction,
+      createdAt: _parseDateTime(createdAt),
     );
   }
 }
@@ -241,31 +313,43 @@ class MessageModel {
   });
 
   factory MessageModel.fromJson(Map<String, dynamic> json) {
+    final id = (json['id'] ?? json['Id'])?.toString() ?? '';
+    final conversationId = (json['conversationId'] ?? json['ConversationId'])?.toString() ?? '';
+    final senderId = (json['senderId'] ?? json['SenderId'])?.toString() ?? '';
+    final senderDisplayName = (json['senderDisplayName'] ?? json['SenderDisplayName'])?.toString() ?? 'User';
+    final senderProfileImageUrl = (json['senderProfileImageUrl'] ?? json['SenderProfileImageUrl'])?.toString();
+    final content = (json['content'] ?? json['Content'])?.toString() ?? '';
+    final messageType = _parseInt(json['messageType'] ?? json['MessageType'], 0);
+    final replyToId = (json['replyToMessageId'] ?? json['ReplyToMessageId'])?.toString();
+    final replyToRaw = json['replyToMessage'] ?? json['ReplyToMessage'];
+    final createdAt = json['createdAt'] ?? json['CreatedAt'];
+    final updatedAt = json['updatedAt'] ?? json['UpdatedAt'];
+    final isDeleted = _parseBool(json['isDeleted'] ?? json['IsDeleted']);
+    final deliveryStatus = _parseInt(json['deliveryStatus'] ?? json['DeliveryStatus'], 0);
+    final reactionsRaw = (json['reactions'] ?? json['Reactions']) as List<dynamic>? ?? [];
+    final attachmentsRaw = (json['attachments'] ?? json['Attachments']) as List<dynamic>? ?? [];
+
     return MessageModel(
-      id: json['id'] as String? ?? '',
-      conversationId: json['conversationId'] as String? ?? '',
-      senderId: json['senderId'] as String? ?? '',
-      senderDisplayName: json['senderDisplayName'] as String? ?? '',
-      senderProfileImageUrl: json['senderProfileImageUrl'] as String?,
-      content: json['content'] as String? ?? '',
-      messageType: json['messageType'] as int? ?? 0,
-      replyToMessageId: json['replyToMessageId'] as String?,
-      replyToMessage: json['replyToMessage'] != null && json['replyToMessage'] is Map
-          ? MessageModel.fromJson(Map<String, dynamic>.from(json['replyToMessage'] as Map))
+      id: id,
+      conversationId: conversationId,
+      senderId: senderId,
+      senderDisplayName: senderDisplayName,
+      senderProfileImageUrl: senderProfileImageUrl,
+      content: content,
+      messageType: messageType,
+      replyToMessageId: replyToId,
+      replyToMessage: replyToRaw != null && replyToRaw is Map
+          ? MessageModel.fromJson(Map<String, dynamic>.from(replyToRaw))
           : null,
-      createdAt: json['createdAt'] != null
-          ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
-          : DateTime.now(),
-      updatedAt: json['updatedAt'] != null
-          ? DateTime.tryParse(json['updatedAt'].toString())
-          : null,
-      isDeleted: json['isDeleted'] as bool? ?? false,
-      deliveryStatus: json['deliveryStatus'] as int? ?? 0,
-      reactions: (json['reactions'] as List<dynamic>? ?? [])
+      createdAt: _parseDateTime(createdAt),
+      updatedAt: updatedAt != null ? DateTime.tryParse(updatedAt.toString()) : null,
+      isDeleted: isDeleted,
+      deliveryStatus: deliveryStatus,
+      reactions: reactionsRaw
           .whereType<Map>()
           .map((r) => MessageReactionModel.fromJson(Map<String, dynamic>.from(r)))
           .toList(),
-      attachments: (json['attachments'] as List<dynamic>? ?? [])
+      attachments: attachmentsRaw
           .whereType<Map>()
           .map((a) => AttachmentModel.fromJson(Map<String, dynamic>.from(a)))
           .toList(),

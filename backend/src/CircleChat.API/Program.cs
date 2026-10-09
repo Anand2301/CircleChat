@@ -61,11 +61,27 @@ builder.Services.AddAuthentication(options =>
     {
         OnMessageReceived = context =>
         {
-            var accessToken = context.Request.Query["access_token"];
             var path = context.HttpContext.Request.Path;
-            if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs/chat"))
+            if (path.StartsWithSegments("/hubs/chat"))
             {
-                context.Token = accessToken;
+                var accessToken = context.Request.Query["access_token"].ToString();
+                if (string.IsNullOrEmpty(accessToken))
+                {
+                    accessToken = context.Request.Query["accessToken"].ToString();
+                }
+                if (string.IsNullOrEmpty(accessToken))
+                {
+                    var authHeader = context.Request.Headers.Authorization.ToString();
+                    if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                    {
+                        accessToken = authHeader["Bearer ".Length..].Trim();
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(accessToken))
+                {
+                    context.Token = accessToken;
+                }
             }
             return Task.CompletedTask;
         }
