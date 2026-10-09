@@ -1,4 +1,4 @@
-package com.circlechat.circle_chat
+package com.circlechat.app
 
 import io.flutter.embedding.android.FlutterActivity
 

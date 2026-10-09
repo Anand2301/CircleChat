@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/api_constants.dart';
 import '../../core/models/models.dart';
@@ -50,6 +52,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
   final String conversationId;
   final String currentUserId;
 
+  final List<VoidCallback> _unsubscribers = [];
+  StreamSubscription? _reconnectSubscription;
+
   ChatNotifier({required this.conversationId, required this.currentUserId})
       : super(ChatState(isLoading: true)) {
     loadMessages();
@@ -59,38 +64,57 @@ class ChatNotifier extends StateNotifier<ChatState> {
   void _subscribeSignalR() {
     SignalRService.instance.joinConversation(conversationId);
 
-    SignalRService.instance.addMessageListener((data) {
-      final msg = MessageModel.fromJson(data);
-      if (msg.conversationId == conversationId) {
-        _onNewMessage(msg);
-      }
-    });
+    _unsubscribers.add(SignalRService.instance.addMessageListener((data) {
+      if (!mounted) return;
+      try {
+        final msg = MessageModel.fromJson(data);
+        if (msg.conversationId == conversationId) {
+          _onNewMessage(msg);
+        }
+      } catch (_) {}
+    }));
 
-    SignalRService.instance.addEditListener((msgId, newContent, updatedAt) {
+    _unsubscribers.add(SignalRService.instance.addEditListener((msgId, newContent, updatedAt) {
+      if (!mounted) return;
       _onMessageEdited(msgId, newContent, updatedAt);
-    });
+    }));
 
-    SignalRService.instance.addDeleteListener((msgId) {
+    _unsubscribers.add(SignalRService.instance.addDeleteListener((msgId) {
+      if (!mounted) return;
       _onMessageDeleted(msgId);
-    });
+    }));
 
-    SignalRService.instance.addReactionListener((msgId, reaction, userId, added) {
+    _unsubscribers.add(SignalRService.instance.addReactionListener((msgId, reaction, userId, added) {
+      if (!mounted) return;
       _onReactionUpdated(msgId, reaction, userId, added);
-    });
+    }));
 
-    SignalRService.instance.addTypingListener((convId, userId, displayName, isTyping) {
+    _unsubscribers.add(SignalRService.instance.addTypingListener((convId, userId, displayName, isTyping) {
+      if (!mounted) return;
       if (convId == conversationId && userId != currentUserId) {
         state = state.copyWith(typingUserName: isTyping ? displayName : null);
       }
-    });
+    }));
 
-    SignalRService.instance.addReadListener((msgId, userId, readAt) {
+    _unsubscribers.add(SignalRService.instance.addReadListener((msgId, userId, readAt) {
+      if (!mounted) return;
       _onMessageRead(msgId, userId);
+    }));
+
+    _reconnectSubscription = SignalRService.instance.reconnectedStream.listen((_) {
+      if (mounted) {
+        syncMissedMessages();
+      }
     });
   }
 
   @override
   void dispose() {
+    for (final unsub in _unsubscribers) {
+      unsub();
+    }
+    _unsubscribers.clear();
+    _reconnectSubscription?.cancel();
     SignalRService.instance.leaveConversation(conversationId);
     super.dispose();
   }
@@ -100,8 +124,11 @@ class ChatNotifier extends StateNotifier<ChatState> {
     try {
       final url = '${ApiConstants.conversationMessages(conversationId)}?limit=50';
       final data = await ApiClient.get(url);
+      if (!mounted) return;
+
       if (data is List) {
         final list = data.map((json) => MessageModel.fromJson(json)).toList();
+        list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
         state = state.copyWith(isLoading: false, messages: list);
 
         // Mark unread messages as read
@@ -110,10 +137,47 @@ class ChatNotifier extends StateNotifier<ChatState> {
             markAsRead(m.id);
           }
         }
+      } else {
+        state = state.copyWith(isLoading: false, messages: const []);
       }
     } catch (e) {
+      if (!mounted) return;
       state = state.copyWith(isLoading: false, error: e.toString());
     }
+  }
+
+  Future<void> syncMissedMessages() async {
+    if (!mounted) return;
+    try {
+      String url;
+      if (state.messages.isNotEmpty) {
+        final newestId = state.messages.first.id;
+        url = '${ApiConstants.conversationMessages(conversationId)}?after=$newestId&limit=50';
+      } else {
+        url = '${ApiConstants.conversationMessages(conversationId)}?limit=50';
+      }
+
+      final data = await ApiClient.get(url);
+      if (!mounted) return;
+
+      if (data is List && data.isNotEmpty) {
+        final incoming = data.map((json) => MessageModel.fromJson(json)).toList();
+        final existingIds = state.messages.map((m) => m.id).toSet();
+        final newOnly = incoming.where((m) => !existingIds.contains(m.id)).toList();
+
+        if (newOnly.isNotEmpty) {
+          final merged = [...newOnly, ...state.messages];
+          merged.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          state = state.copyWith(messages: merged);
+
+          for (final m in newOnly) {
+            if (m.senderId != currentUserId && m.deliveryStatus < 2) {
+              markAsRead(m.id);
+            }
+          }
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> loadOlderMessages() async {
@@ -125,17 +189,24 @@ class ChatNotifier extends StateNotifier<ChatState> {
     try {
       final url = '${ApiConstants.conversationMessages(conversationId)}?before=$oldestMessageId&limit=50';
       final data = await ApiClient.get(url);
+      if (!mounted) return;
+
       if (data is List && data.isNotEmpty) {
         final older = data.map((json) => MessageModel.fromJson(json)).toList();
+        final existingIds = state.messages.map((m) => m.id).toSet();
+        final newOlderOnly = older.where((m) => !existingIds.contains(m.id)).toList();
+
+        final merged = [...state.messages, ...newOlderOnly];
+        merged.sort((a, b) => b.createdAt.compareTo(a.createdAt));
         state = state.copyWith(
           isLoadingOlder: false,
-          messages: [...state.messages, ...older],
+          messages: merged,
         );
       } else {
         state = state.copyWith(isLoadingOlder: false);
       }
     } catch (_) {
-      state = state.copyWith(isLoadingOlder: false);
+      if (mounted) state = state.copyWith(isLoadingOlder: false);
     }
   }
 
@@ -218,11 +289,23 @@ class ChatNotifier extends StateNotifier<ChatState> {
   }
 
   void _onNewMessage(MessageModel msg) {
+    if (!mounted) return;
+    // Prevent duplicate messages
     if (state.messages.any((m) => m.id == msg.id)) return;
-    state = state.copyWith(messages: [msg, ...state.messages]);
+
+    final updated = [msg, ...state.messages];
+    // Keep ordering stable: newest first
+    updated.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    state = state.copyWith(messages: updated);
+
+    // If incoming message from other user and viewing this chat, mark read
+    if (msg.senderId != currentUserId) {
+      markAsRead(msg.id);
+    }
   }
 
   void _onMessageEdited(String msgId, String newContent, String updatedAtStr) {
+    if (!mounted) return;
     final updatedList = state.messages.map((m) {
       if (m.id == msgId) {
         return MessageModel(
@@ -250,6 +333,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
   }
 
   void _onMessageDeleted(String msgId) {
+    if (!mounted) return;
     final updatedList = state.messages.map((m) {
       if (m.id == msgId) {
         return MessageModel(
@@ -277,6 +361,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
   }
 
   void _onReactionUpdated(String msgId, String reaction, String userId, bool added) {
+    if (!mounted) return;
     final updatedList = state.messages.map((m) {
       if (m.id == msgId) {
         final reactions = List<MessageReactionModel>.from(m.reactions);
@@ -319,6 +404,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
   }
 
   void _onMessageRead(String msgId, String userId) {
+    if (!mounted) return;
     final updatedList = state.messages.map((m) {
       if (m.id == msgId && m.senderId == currentUserId) {
         return MessageModel(

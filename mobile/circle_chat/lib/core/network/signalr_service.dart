@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:signalr_netcore/signalr_client.dart';
 import '../constants/api_constants.dart';
 import '../storage/token_storage.dart';
@@ -24,6 +25,12 @@ class SignalRService {
   final _connectionStateController = StreamController<bool>.broadcast();
   Stream<bool> get connectionStateStream => _connectionStateController.stream;
 
+  final _reconnectedController = StreamController<void>.broadcast();
+  Stream<void> get reconnectedStream => _reconnectedController.stream;
+
+  final Set<String> _activeConversationIds = {};
+  Set<String> get activeConversationIds => Set.unmodifiable(_activeConversationIds);
+
   // Event callbacks
   final List<OnMessageReceivedCallback> _messageCallbacks = [];
   final List<OnMessageEditedCallback> _editCallbacks = [];
@@ -33,25 +40,46 @@ class SignalRService {
   final List<OnPresenceChangedCallback> _presenceCallbacks = [];
   final List<OnMessageReadCallback> _readCallbacks = [];
 
-  void addMessageListener(OnMessageReceivedCallback cb) => _messageCallbacks.add(cb);
+  VoidCallback addMessageListener(OnMessageReceivedCallback cb) {
+    _messageCallbacks.add(cb);
+    return () => _messageCallbacks.remove(cb);
+  }
   void removeMessageListener(OnMessageReceivedCallback cb) => _messageCallbacks.remove(cb);
 
-  void addEditListener(OnMessageEditedCallback cb) => _editCallbacks.add(cb);
+  VoidCallback addEditListener(OnMessageEditedCallback cb) {
+    _editCallbacks.add(cb);
+    return () => _editCallbacks.remove(cb);
+  }
   void removeEditListener(OnMessageEditedCallback cb) => _editCallbacks.remove(cb);
 
-  void addDeleteListener(OnMessageDeletedCallback cb) => _deleteCallbacks.add(cb);
+  VoidCallback addDeleteListener(OnMessageDeletedCallback cb) {
+    _deleteCallbacks.add(cb);
+    return () => _deleteCallbacks.remove(cb);
+  }
   void removeDeleteListener(OnMessageDeletedCallback cb) => _deleteCallbacks.remove(cb);
 
-  void addReactionListener(OnReactionUpdatedCallback cb) => _reactionCallbacks.add(cb);
+  VoidCallback addReactionListener(OnReactionUpdatedCallback cb) {
+    _reactionCallbacks.add(cb);
+    return () => _reactionCallbacks.remove(cb);
+  }
   void removeReactionListener(OnReactionUpdatedCallback cb) => _reactionCallbacks.remove(cb);
 
-  void addTypingListener(OnUserTypingCallback cb) => _typingCallbacks.add(cb);
+  VoidCallback addTypingListener(OnUserTypingCallback cb) {
+    _typingCallbacks.add(cb);
+    return () => _typingCallbacks.remove(cb);
+  }
   void removeTypingListener(OnUserTypingCallback cb) => _typingCallbacks.remove(cb);
 
-  void addPresenceListener(OnPresenceChangedCallback cb) => _presenceCallbacks.add(cb);
+  VoidCallback addPresenceListener(OnPresenceChangedCallback cb) {
+    _presenceCallbacks.add(cb);
+    return () => _presenceCallbacks.remove(cb);
+  }
   void removePresenceListener(OnPresenceChangedCallback cb) => _presenceCallbacks.remove(cb);
 
-  void addReadListener(OnMessageReadCallback cb) => _readCallbacks.add(cb);
+  VoidCallback addReadListener(OnMessageReadCallback cb) {
+    _readCallbacks.add(cb);
+    return () => _readCallbacks.remove(cb);
+  }
   void removeReadListener(OnMessageReadCallback cb) => _readCallbacks.remove(cb);
 
   Future<void> connect() async {
@@ -61,6 +89,13 @@ class SignalRService {
     if (token == null || token.isEmpty) return;
 
     try {
+      if (_hubConnection != null) {
+        try {
+          await _hubConnection?.stop();
+        } catch (_) {}
+        _hubConnection = null;
+      }
+
       final url = '${ApiConstants.signalRHubUrl}?access_token=$token';
 
       _hubConnection = HubConnectionBuilder()
@@ -84,98 +119,154 @@ class SignalRService {
         _connectionStateController.add(false);
       });
 
-      _hubConnection?.onreconnected(({connectionId}) {
+      _hubConnection?.onreconnected(({connectionId}) async {
         _isConnected = true;
         _connectionStateController.add(true);
+        await _restoreSubscriptions();
+        _reconnectedController.add(null);
       });
 
       await _hubConnection?.start();
       _isConnected = true;
       _connectionStateController.add(true);
+      await _restoreSubscriptions();
     } catch (_) {
       _isConnected = false;
       _connectionStateController.add(false);
     }
   }
 
+  Future<void> ensureConnected() async {
+    if (!_isConnected ||
+        _hubConnection == null ||
+        _hubConnection?.state == HubConnectionState.Disconnected) {
+      await connect();
+    }
+  }
+
+  Future<void> _restoreSubscriptions() async {
+    if (!_isConnected || _hubConnection?.state != HubConnectionState.Connected) return;
+    for (final convId in _activeConversationIds.toList()) {
+      try {
+        await _hubConnection?.invoke('JoinConversation', args: [convId]);
+      } catch (_) {}
+    }
+  }
+
   void _registerHubHandlers() {
     _hubConnection?.on('ReceiveMessage', (arguments) {
       if (arguments != null && arguments.isNotEmpty) {
-        final data = arguments[0] as Map<String, dynamic>;
-        for (final cb in _messageCallbacks) {
-          cb(data);
-        }
+        try {
+          final data = arguments[0] as Map<String, dynamic>;
+          final cbs = List<OnMessageReceivedCallback>.from(_messageCallbacks);
+          for (final cb in cbs) {
+            try {
+              cb(data);
+            } catch (_) {}
+          }
+        } catch (_) {}
       }
     });
 
     _hubConnection?.on('MessageEdited', (arguments) {
       if (arguments != null && arguments.length >= 3) {
-        final id = arguments[0].toString();
-        final content = arguments[1].toString();
-        final updatedAt = arguments[2].toString();
-        for (final cb in _editCallbacks) {
-          cb(id, content, updatedAt);
-        }
+        try {
+          final id = arguments[0].toString();
+          final content = arguments[1].toString();
+          final updatedAt = arguments[2].toString();
+          final cbs = List<OnMessageEditedCallback>.from(_editCallbacks);
+          for (final cb in cbs) {
+            try {
+              cb(id, content, updatedAt);
+            } catch (_) {}
+          }
+        } catch (_) {}
       }
     });
 
     _hubConnection?.on('MessageDeleted', (arguments) {
       if (arguments != null && arguments.isNotEmpty) {
-        final id = arguments[0].toString();
-        for (final cb in _deleteCallbacks) {
-          cb(id);
-        }
+        try {
+          final id = arguments[0].toString();
+          final cbs = List<OnMessageDeletedCallback>.from(_deleteCallbacks);
+          for (final cb in cbs) {
+            try {
+              cb(id);
+            } catch (_) {}
+          }
+        } catch (_) {}
       }
     });
 
     _hubConnection?.on('ReactionUpdated', (arguments) {
       if (arguments != null && arguments.length >= 4) {
-        final id = arguments[0].toString();
-        final reaction = arguments[1].toString();
-        final userId = arguments[2].toString();
-        final added = arguments[3] as bool? ?? false;
-        for (final cb in _reactionCallbacks) {
-          cb(id, reaction, userId, added);
-        }
+        try {
+          final id = arguments[0].toString();
+          final reaction = arguments[1].toString();
+          final userId = arguments[2].toString();
+          final added = arguments[3] as bool? ?? false;
+          final cbs = List<OnReactionUpdatedCallback>.from(_reactionCallbacks);
+          for (final cb in cbs) {
+            try {
+              cb(id, reaction, userId, added);
+            } catch (_) {}
+          }
+        } catch (_) {}
       }
     });
 
     _hubConnection?.on('UserTyping', (arguments) {
       if (arguments != null && arguments.length >= 4) {
-        final convId = arguments[0].toString();
-        final userId = arguments[1].toString();
-        final displayName = arguments[2].toString();
-        final isTyping = arguments[3] as bool? ?? false;
-        for (final cb in _typingCallbacks) {
-          cb(convId, userId, displayName, isTyping);
-        }
+        try {
+          final convId = arguments[0].toString();
+          final userId = arguments[1].toString();
+          final displayName = arguments[2].toString();
+          final isTyping = arguments[3] as bool? ?? false;
+          final cbs = List<OnUserTypingCallback>.from(_typingCallbacks);
+          for (final cb in cbs) {
+            try {
+              cb(convId, userId, displayName, isTyping);
+            } catch (_) {}
+          }
+        } catch (_) {}
       }
     });
 
     _hubConnection?.on('UserPresenceChanged', (arguments) {
       if (arguments != null && arguments.length >= 2) {
-        final userId = arguments[0].toString();
-        final isOnline = arguments[1] as bool? ?? false;
-        final lastSeen = arguments.length > 2 ? arguments[2]?.toString() : null;
-        for (final cb in _presenceCallbacks) {
-          cb(userId, isOnline, lastSeen);
-        }
+        try {
+          final userId = arguments[0].toString();
+          final isOnline = arguments[1] as bool? ?? false;
+          final lastSeen = arguments.length > 2 ? arguments[2]?.toString() : null;
+          final cbs = List<OnPresenceChangedCallback>.from(_presenceCallbacks);
+          for (final cb in cbs) {
+            try {
+              cb(userId, isOnline, lastSeen);
+            } catch (_) {}
+          }
+        } catch (_) {}
       }
     });
 
     _hubConnection?.on('MessageRead', (arguments) {
       if (arguments != null && arguments.length >= 3) {
-        final msgId = arguments[0].toString();
-        final userId = arguments[1].toString();
-        final readAt = arguments[2].toString();
-        for (final cb in _readCallbacks) {
-          cb(msgId, userId, readAt);
-        }
+        try {
+          final msgId = arguments[0].toString();
+          final userId = arguments[1].toString();
+          final readAt = arguments[2].toString();
+          final cbs = List<OnMessageReadCallback>.from(_readCallbacks);
+          for (final cb in cbs) {
+            try {
+              cb(msgId, userId, readAt);
+            } catch (_) {}
+          }
+        } catch (_) {}
       }
     });
   }
 
   Future<void> joinConversation(String conversationId) async {
+    _activeConversationIds.add(conversationId);
     if (_isConnected && _hubConnection?.state == HubConnectionState.Connected) {
       try {
         await _hubConnection?.invoke('JoinConversation', args: [conversationId]);
@@ -184,6 +275,7 @@ class SignalRService {
   }
 
   Future<void> leaveConversation(String conversationId) async {
+    _activeConversationIds.remove(conversationId);
     if (_isConnected && _hubConnection?.state == HubConnectionState.Connected) {
       try {
         await _hubConnection?.invoke('LeaveConversation', args: [conversationId]);
@@ -211,6 +303,7 @@ class SignalRService {
     try {
       await _hubConnection?.stop();
     } catch (_) {}
+    _activeConversationIds.clear();
     _isConnected = false;
     _connectionStateController.add(false);
   }

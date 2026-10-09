@@ -29,6 +29,17 @@ public class ChatHub : Hub
             await _presenceService.SetUserOnlineAsync(userId, Context.ConnectionId);
             await Groups.AddToGroupAsync(Context.ConnectionId, $"user_{userId}");
 
+            // Auto-subscribe connection to all authorized conversations for this user
+            var userConversations = await _dbContext.ConversationMembers
+                .Where(m => m.UserId == userId && m.IsActive)
+                .Select(m => m.ConversationId)
+                .ToListAsync();
+
+            foreach (var convId in userConversations)
+            {
+                await Groups.AddToGroupAsync(Context.ConnectionId, $"conv_{convId}");
+            }
+
             // Notify all clients of online presence
             await Clients.Others.SendAsync("UserPresenceChanged", userId, true, DateTime.UtcNow);
         }
@@ -108,8 +119,15 @@ public class SignalRNotifier : ISignalRNotifier
         _hubContext = hubContext;
     }
 
-    public Task NotifyNewMessageAsync(Guid conversationId, object messageDto) =>
-        _hubContext.Clients.Group($"conv_{conversationId}").SendAsync("ReceiveMessage", messageDto);
+    public Task NotifyNewMessageAsync(Guid conversationId, object messageDto, IEnumerable<string>? memberUserIds = null)
+    {
+        if (memberUserIds != null && memberUserIds.Any())
+        {
+            var groups = memberUserIds.Select(id => $"user_{id}").Append($"conv_{conversationId}").Distinct().ToList();
+            return _hubContext.Clients.Groups(groups).SendAsync("ReceiveMessage", messageDto);
+        }
+        return _hubContext.Clients.Group($"conv_{conversationId}").SendAsync("ReceiveMessage", messageDto);
+    }
 
     public Task NotifyMessageEditedAsync(Guid conversationId, Guid messageId, string newContent, DateTime updatedAt) =>
         _hubContext.Clients.Group($"conv_{conversationId}").SendAsync("MessageEdited", messageId, newContent, updatedAt);

@@ -45,25 +45,42 @@ public class GetMessagesEndpoint : EndpointWithoutRequest<ApiResponse<List<Messa
         }
 
         var beforeCursor = Query<Guid?>("before", false);
+        var afterCursor = Query<Guid?>("after", false);
         var limit = Math.Clamp(Query<int?>("limit", false) ?? 50, 1, 100);
 
-        DateTime? cursorCreatedAt = null;
+        DateTime? beforeCreatedAt = null;
         if (beforeCursor.HasValue)
         {
             var cursorMsg = await _dbContext.Messages.FindAsync(new object[] { beforeCursor.Value }, ct);
             if (cursorMsg != null)
             {
-                cursorCreatedAt = cursorMsg.CreatedAt;
+                beforeCreatedAt = cursorMsg.CreatedAt;
+            }
+        }
+
+        DateTime? afterCreatedAt = null;
+        if (afterCursor.HasValue)
+        {
+            var cursorMsg = await _dbContext.Messages.FindAsync(new object[] { afterCursor.Value }, ct);
+            if (cursorMsg != null)
+            {
+                afterCreatedAt = cursorMsg.CreatedAt;
             }
         }
 
         var query = _dbContext.Messages
             .Where(m => m.ConversationId == convId);
 
-        if (cursorCreatedAt.HasValue && beforeCursor.HasValue)
+        if (beforeCreatedAt.HasValue && beforeCursor.HasValue)
         {
-            query = query.Where(m => m.CreatedAt < cursorCreatedAt.Value ||
-                                     (m.CreatedAt == cursorCreatedAt.Value && m.Id < beforeCursor.Value));
+            query = query.Where(m => m.CreatedAt < beforeCreatedAt.Value ||
+                                     (m.CreatedAt == beforeCreatedAt.Value && m.Id < beforeCursor.Value));
+        }
+
+        if (afterCreatedAt.HasValue && afterCursor.HasValue)
+        {
+            query = query.Where(m => m.CreatedAt > afterCreatedAt.Value ||
+                                     (m.CreatedAt == afterCreatedAt.Value && m.Id > afterCursor.Value));
         }
 
         var messages = await query
@@ -245,38 +262,83 @@ public class SendMessageEndpoint : Endpoint<SendMessageRequest, ApiResponse<Mess
             DeliveryStatus = 0
         };
 
-        // 4. Real-time broadcast via SignalR
-        await _notifier.NotifyNewMessageAsync(convId, messageDto);
-
-        // 5. Firebase Cloud Messaging (Push notifications to other conversation members)
-        var recipientUserIds = await _dbContext.ConversationMembers
-            .Where(m => m.ConversationId == convId && m.UserId != currentUserId && m.IsActive)
+        // Query active conversation members for real-time delivery and push notifications
+        var allMemberUserIds = await _dbContext.ConversationMembers
+            .Where(m => m.ConversationId == convId && m.IsActive)
             .Select(m => m.UserId)
             .ToListAsync(ct);
 
-        var deviceTokens = await _dbContext.Devices
-            .Where(d => recipientUserIds.Contains(d.UserId) && d.IsActive)
-            .Select(d => d.DeviceToken)
-            .ToListAsync(ct);
+        // 4. Real-time broadcast via SignalR
+        await _notifier.NotifyNewMessageAsync(convId, messageDto, allMemberUserIds);
 
-        if (deviceTokens.Any())
+        // 5. Firebase Cloud Messaging (Push notifications to other conversation members)
+        var recipientUserIds = allMemberUserIds.Where(uid => uid != currentUserId).ToList();
+
+        if (recipientUserIds.Any())
         {
-            var preview = message.MessageType == MessageType.Text
-                ? (message.Content.Length > 80 ? message.Content[..80] + "..." : message.Content)
-                : $"Sent a {message.MessageType.ToString().ToLower()}";
+            var deviceTokens = await _dbContext.Devices
+                .Where(d => recipientUserIds.Contains(d.UserId) && d.IsActive)
+                .Select(d => d.DeviceToken)
+                .Distinct()
+                .ToListAsync(ct);
 
-            var pushData = new Dictionary<string, string>
+            if (deviceTokens.Any())
             {
-                { "conversationId", convId.ToString() },
-                { "messageId", message.Id.ToString() }
-            };
+                var senderName = sender?.DisplayName ?? "CircleChat";
+                var isGroup = conv?.Type == ConversationType.Group;
+                var notifTitle = isGroup && !string.IsNullOrWhiteSpace(conv?.Name)
+                    ? $"{senderName} in {conv.Name}"
+                    : senderName;
 
-            await _pushService.SendMulticastNotificationAsync(
-                deviceTokens,
-                sender?.DisplayName ?? "CircleChat",
-                preview,
-                pushData,
-                ct);
+                var preview = message.MessageType switch
+                {
+                    MessageType.Image => "📷 Photo",
+                    MessageType.File => "📎 Attachment",
+                    MessageType.Audio => "🎵 Voice message",
+                    _ => message.Content.Length > 250 ? message.Content[..250] + "..." : message.Content
+                };
+
+                var pushData = new Dictionary<string, string>
+                {
+                    { "messageId", message.Id.ToString() },
+                    { "conversationId", convId.ToString() },
+                    { "senderId", currentUserId },
+                    { "type", "new_message" },
+                    { "conversationName", conv?.Name ?? "" },
+                    { "isGroup", isGroup ? "true" : "false" },
+                    { "senderDisplayName", senderName }
+                };
+
+                try
+                {
+                    var pushResult = await _pushService.SendMulticastNotificationAsync(
+                        deviceTokens,
+                        notifTitle,
+                        preview,
+                        pushData,
+                        ct);
+
+                    if (pushResult.InvalidTokens.Any())
+                    {
+                        var invalidTokens = pushResult.InvalidTokens;
+                        var expiredDevices = await _dbContext.Devices
+                            .Where(d => invalidTokens.Contains(d.DeviceToken))
+                            .ToListAsync(ct);
+
+                        foreach (var d in expiredDevices)
+                        {
+                            d.IsActive = false;
+                        }
+
+                        await _dbContext.SaveChangesAsync(ct);
+                    }
+                }
+                catch (Exception pushEx)
+                {
+                    // Fail-safe: FCM delivery error must never fail message persistence or HTTP response
+                    Logger.LogWarning("Push notification delivery failed for conversation {ConversationId}: {Message}", convId, pushEx.Message);
+                }
+            }
         }
 
         await SendOkAsync(ApiResponse<MessageDto>.Ok(messageDto), ct);

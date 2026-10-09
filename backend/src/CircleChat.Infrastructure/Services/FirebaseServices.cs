@@ -97,14 +97,21 @@ public class FirebasePushNotificationService : IPushNotificationService
         _logger = logger;
     }
 
-    public async Task SendNotificationAsync(
+    private static string MaskToken(string token)
+    {
+        if (string.IsNullOrEmpty(token)) return "***";
+        if (token.Length <= 10) return "***";
+        return $"{token[..4]}...{token[^4..]}";
+    }
+
+    public async Task<bool> SendNotificationAsync(
         string deviceToken,
         string title,
         string body,
         Dictionary<string, string>? data = null,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(deviceToken)) return;
+        if (string.IsNullOrWhiteSpace(deviceToken)) return false;
 
         try
         {
@@ -114,31 +121,57 @@ public class FirebasePushNotificationService : IPushNotificationService
                 {
                     Token = deviceToken,
                     Notification = new Notification { Title = title, Body = body },
-                    Data = data ?? new Dictionary<string, string>()
+                    Data = data ?? new Dictionary<string, string>(),
+                    Android = new AndroidConfig
+                    {
+                        Priority = Priority.High,
+                        Notification = new AndroidNotification
+                        {
+                            ChannelId = "circle_chat_messages",
+                            Priority = NotificationPriority.HIGH,
+                            DefaultSound = true,
+                            DefaultVibrateTimings = true,
+                            Tag = data != null && data.TryGetValue("conversationId", out var convId) ? convId : null
+                        }
+                    }
                 };
+
                 var response = await FirebaseMessaging.DefaultInstance.SendAsync(message, cancellationToken);
-                _logger.LogInformation("Push notification sent: {Response}", response);
+                _logger.LogInformation("Push notification delivered to device {Device}: {ResponseId}",
+                    MaskToken(deviceToken), response);
+                return true;
             }
             else
             {
-                _logger.LogInformation("[Dev Notification] To: {Token} | Title: {Title} | Body: {Body}", deviceToken, title, body);
+                _logger.LogInformation("[Dev Notification] To: {Device} | Title: {Title} | Body: {Body}",
+                    MaskToken(deviceToken), title, body);
+                return true;
             }
+        }
+        catch (FirebaseMessagingException fcmEx)
+        {
+            _logger.LogWarning("Firebase messaging error delivering push to {Device}: ErrorCode: {ErrorCode}",
+                MaskToken(deviceToken), fcmEx.MessagingErrorCode);
+            return false;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to deliver push notification to device {Token}", deviceToken);
+            _logger.LogWarning("Failed to deliver push notification to device {Device}: {ErrorMessage}",
+                MaskToken(deviceToken), ex.Message);
+            return false;
         }
     }
 
-    public async Task SendMulticastNotificationAsync(
+    public async Task<PushNotificationResult> SendMulticastNotificationAsync(
         IEnumerable<string> deviceTokens,
         string title,
         string body,
         Dictionary<string, string>? data = null,
         CancellationToken cancellationToken = default)
     {
-        var tokenList = deviceTokens.Where(t => !string.IsNullOrWhiteSpace(t)).ToList();
-        if (!tokenList.Any()) return;
+        var tokenList = deviceTokens.Where(t => !string.IsNullOrWhiteSpace(t)).Distinct().ToList();
+        var result = new PushNotificationResult();
+        if (!tokenList.Any()) return result;
 
         try
         {
@@ -148,21 +181,63 @@ public class FirebasePushNotificationService : IPushNotificationService
                 {
                     Tokens = tokenList,
                     Notification = new Notification { Title = title, Body = body },
-                    Data = data ?? new Dictionary<string, string>()
+                    Data = data ?? new Dictionary<string, string>(),
+                    Android = new AndroidConfig
+                    {
+                        Priority = Priority.High,
+                        Notification = new AndroidNotification
+                        {
+                            ChannelId = "circle_chat_messages",
+                            Priority = NotificationPriority.HIGH,
+                            DefaultSound = true,
+                            DefaultVibrateTimings = true,
+                            Tag = data != null && data.TryGetValue("conversationId", out var convId) ? convId : null
+                        }
+                    }
                 };
-                var response = await FirebaseMessaging.DefaultInstance.SendEachForMulticastAsync(message, cancellationToken);
-                _logger.LogInformation("Multicast push notification sent. Success: {SuccessCount}, Failures: {FailureCount}",
-                    response.SuccessCount, response.FailureCount);
+
+                var batchResponse = await FirebaseMessaging.DefaultInstance.SendEachForMulticastAsync(message, cancellationToken);
+                result.SuccessCount = batchResponse.SuccessCount;
+                result.FailureCount = batchResponse.FailureCount;
+
+                _logger.LogInformation("Multicast push sent to {Total} devices. Success: {SuccessCount}, Failures: {FailureCount}",
+                    tokenList.Count, batchResponse.SuccessCount, batchResponse.FailureCount);
+
+                for (int i = 0; i < batchResponse.Responses.Count; i++)
+                {
+                    var resp = batchResponse.Responses[i];
+                    if (!resp.IsSuccess)
+                    {
+                        var token = tokenList[i];
+                        if (resp.Exception != null)
+                        {
+                            var fcmCode = resp.Exception.MessagingErrorCode;
+                            _logger.LogWarning("Multicast delivery failed for device {Device}: {ErrorCode}",
+                                MaskToken(token), fcmCode);
+
+                            if (fcmCode == MessagingErrorCode.Unregistered ||
+                                fcmCode == MessagingErrorCode.InvalidArgument ||
+                                fcmCode == MessagingErrorCode.SenderIdMismatch)
+                            {
+                                result.InvalidTokens.Add(token);
+                            }
+                        }
+                    }
+                }
             }
             else
             {
+                result.SuccessCount = tokenList.Count;
+                result.FailureCount = 0;
                 _logger.LogInformation("[Dev Multicast Notification] To {Count} devices | Title: {Title} | Body: {Body}",
                     tokenList.Count, title, body);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to send multicast push notifications");
+            _logger.LogError(ex, "Failed to send multicast push notifications to {Count} devices", tokenList.Count);
         }
+
+        return result;
     }
 }

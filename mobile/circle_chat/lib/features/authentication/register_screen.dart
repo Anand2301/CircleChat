@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/theme/app_theme.dart';
 import 'auth_controller.dart';
 import '../home/home_screen.dart';
 
@@ -54,10 +55,19 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
+      backgroundColor: isDark ? AppTheme.darkScaffold : AppTheme.lightScaffold,
       appBar: AppBar(
-        title: const Text('Join CircleChat'),
+        leading: IconButton(
+          icon: const Icon(Icons.chevron_left_rounded, size: 28),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text(
+          'Join CircleChat',
+          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+        ),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -68,26 +78,46 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  'Private Invite-Only Registration',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                  'Private Registration',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.5,
+                    color: isDark ? AppTheme.darkTextPrimary : AppTheme.lightTextPrimary,
+                  ),
                 ),
                 const SizedBox(height: 6),
                 Text(
                   'Enter your invitation code to access CircleChat.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary,
+                  ),
                 ),
                 const SizedBox(height: 24),
                 if (authState.errorMessage != null) ...[
                   Container(
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                     decoration: BoxDecoration(
-                      color: Colors.red.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+                      color: AppTheme.errorColor.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.errorColor.withValues(alpha: 0.3)),
                     ),
-                    child: Text(
-                      authState.errorMessage!,
-                      style: const TextStyle(color: Colors.red, fontSize: 13),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.error_outline_rounded, size: 20, color: AppTheme.errorColor),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            authState.errorMessage!,
+                            style: const TextStyle(
+                              color: AppTheme.errorColor,
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -95,46 +125,75 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 TextFormField(
                   controller: _inviteController,
                   textCapitalization: TextCapitalization.characters,
-                  decoration: const InputDecoration(
-                    labelText: 'Invitation Code (e.g., CC-ABCD1234)',
-                    prefixIcon: Icon(Icons.vpn_key_outlined),
+                  style: TextStyle(
+                    fontSize: 15.5,
+                    color: isDark ? AppTheme.darkTextPrimary : AppTheme.lightTextPrimary,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: 'Invitation Code',
+                    hintText: 'e.g., CC-ABCD1234',
+                    prefixIcon: Icon(
+                      Icons.vpn_key_outlined,
+                      color: isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary,
+                    ),
                   ),
                   validator: (val) {
                     if (val == null || val.trim().isEmpty) return 'Invitation code is required';
                     return null;
                   },
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
                 TextFormField(
                   controller: _fullNameController,
-                  decoration: const InputDecoration(
+                  style: TextStyle(
+                    fontSize: 15.5,
+                    color: isDark ? AppTheme.darkTextPrimary : AppTheme.lightTextPrimary,
+                  ),
+                  decoration: InputDecoration(
                     labelText: 'Full Name',
-                    prefixIcon: Icon(Icons.badge_outlined),
+                    prefixIcon: Icon(
+                      Icons.badge_outlined,
+                      color: isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary,
+                    ),
                   ),
                   validator: (val) {
                     if (val == null || val.trim().isEmpty) return 'Full name is required';
                     return null;
                   },
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
                 TextFormField(
                   controller: _displayNameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Display Name (shown in chats)',
-                    prefixIcon: Icon(Icons.person_outline),
+                  style: TextStyle(
+                    fontSize: 15.5,
+                    color: isDark ? AppTheme.darkTextPrimary : AppTheme.lightTextPrimary,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: 'Display Name (Username)',
+                    prefixIcon: Icon(
+                      Icons.person_outline_rounded,
+                      color: isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary,
+                    ),
                   ),
                   validator: (val) {
                     if (val == null || val.trim().isEmpty) return 'Display name is required';
                     return null;
                   },
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
                 TextFormField(
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
+                  style: TextStyle(
+                    fontSize: 15.5,
+                    color: isDark ? AppTheme.darkTextPrimary : AppTheme.lightTextPrimary,
+                  ),
+                  decoration: InputDecoration(
                     labelText: 'Email Address',
-                    prefixIcon: Icon(Icons.email_outlined),
+                    prefixIcon: Icon(
+                      Icons.email_outlined,
+                      color: isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary,
+                    ),
                   ),
                   validator: (val) {
                     if (val == null || val.trim().isEmpty) return 'Email is required';
@@ -142,31 +201,48 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
                 TextFormField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
+                  style: TextStyle(
+                    fontSize: 15.5,
+                    color: isDark ? AppTheme.darkTextPrimary : AppTheme.lightTextPrimary,
+                  ),
                   decoration: InputDecoration(
-                    labelText: 'Password (min 6 characters)',
-                    prefixIcon: const Icon(Icons.lock_outline),
+                    labelText: 'Password',
+                    prefixIcon: Icon(
+                      Icons.lock_outline_rounded,
+                      color: isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary,
+                    ),
                     suffixIcon: IconButton(
-                      icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility),
+                      icon: Icon(
+                        _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                        color: isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary,
+                      ),
                       onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                     ),
                   ),
                   validator: (val) {
                     if (val == null || val.isEmpty) return 'Password is required';
-                    if (val.length < 6) return 'Password must be at least 6 characters';
+                    if (val.length < 8) return 'Password must be at least 8 characters';
                     return null;
                   },
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
                 TextFormField(
                   controller: _confirmPasswordController,
                   obscureText: _obscurePassword,
-                  decoration: const InputDecoration(
+                  style: TextStyle(
+                    fontSize: 15.5,
+                    color: isDark ? AppTheme.darkTextPrimary : AppTheme.lightTextPrimary,
+                  ),
+                  decoration: InputDecoration(
                     labelText: 'Confirm Password',
-                    prefixIcon: Icon(Icons.lock_reset),
+                    prefixIcon: Icon(
+                      Icons.lock_outline_rounded,
+                      color: isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary,
+                    ),
                   ),
                   validator: (val) {
                     if (val != _passwordController.text) return 'Passwords do not match';
@@ -178,9 +254,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   onPressed: authState.isLoading ? null : _submit,
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),
-                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    backgroundColor: AppTheme.primaryColor,
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    elevation: 0,
                   ),
                   child: authState.isLoading
                       ? const SizedBox(
@@ -188,8 +265,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                           width: 20,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                         )
-                      : const Text('Create Account', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      : const Text(
+                          'Complete Registration',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, letterSpacing: -0.2),
+                        ),
                 ),
+                const SizedBox(height: 20),
               ],
             ),
           ),

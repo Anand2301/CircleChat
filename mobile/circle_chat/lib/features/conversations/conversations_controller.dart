@@ -1,8 +1,11 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/api_constants.dart';
 import '../../core/models/models.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/signalr_service.dart';
+import '../../core/storage/token_storage.dart';
 
 class ConversationsState {
   final bool isLoading;
@@ -29,43 +32,77 @@ class ConversationsState {
 }
 
 class ConversationsNotifier extends StateNotifier<ConversationsState> {
+  final List<VoidCallback> _unsubscribers = [];
+  StreamSubscription? _reconnectSubscription;
+  String? _currentUserId;
+
   ConversationsNotifier() : super(ConversationsState(isLoading: true)) {
+    _initUserId();
     loadConversations();
     _subscribeToSignalR();
   }
 
-  void _subscribeToSignalR() {
-    SignalRService.instance.addMessageListener((data) {
-      final newMsg = MessageModel.fromJson(data);
-      _handleIncomingMessage(newMsg);
-    });
+  Future<void> _initUserId() async {
+    _currentUserId = await TokenStorage.getUserId();
+  }
 
-    SignalRService.instance.addPresenceListener((userId, isOnline, lastSeen) {
+  void _subscribeToSignalR() {
+    _unsubscribers.add(SignalRService.instance.addMessageListener((data) {
+      if (!mounted) return;
+      try {
+        final newMsg = MessageModel.fromJson(data);
+        _handleIncomingMessage(newMsg);
+      } catch (_) {}
+    }));
+
+    _unsubscribers.add(SignalRService.instance.addPresenceListener((userId, isOnline, lastSeen) {
+      if (!mounted) return;
       _handlePresenceChanged(userId, isOnline);
+    }));
+
+    _reconnectSubscription = SignalRService.instance.reconnectedStream.listen((_) {
+      if (mounted) {
+        loadConversations();
+      }
     });
+  }
+
+  @override
+  void dispose() {
+    for (final unsub in _unsubscribers) {
+      unsub();
+    }
+    _unsubscribers.clear();
+    _reconnectSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> loadConversations() async {
     state = state.copyWith(isLoading: true, error: null);
     try {
       final data = await ApiClient.get(ApiConstants.conversations);
+      if (!mounted) return;
+
       if (data is List) {
         final list = data.map((json) => ConversationModel.fromJson(json)).toList();
         state = state.copyWith(isLoading: false, conversations: list);
       } else {
-        state = state.copyWith(isLoading: false, conversations: []);
+        state = state.copyWith(isLoading: false, conversations: const []);
       }
     } catch (e) {
+      if (!mounted) return;
       state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
 
   void _handleIncomingMessage(MessageModel msg) {
+    if (!mounted) return;
     final updatedList = List<ConversationModel>.from(state.conversations);
     final index = updatedList.indexWhere((c) => c.id == msg.conversationId);
 
     if (index != -1) {
       final old = updatedList[index];
+      final isFromMe = msg.senderId == _currentUserId;
       final updated = ConversationModel(
         id: old.id,
         type: old.type,
@@ -75,19 +112,43 @@ class ConversationsNotifier extends StateNotifier<ConversationsState> {
         createdAt: old.createdAt,
         updatedAt: msg.createdAt,
         lastMessage: msg,
-        unreadCount: old.unreadCount + 1,
+        unreadCount: isFromMe ? old.unreadCount : (old.unreadCount + 1),
         members: old.members,
       );
       updatedList.removeAt(index);
       updatedList.insert(0, updated);
       state = state.copyWith(conversations: updatedList);
     } else {
-      // Reload conversations if not found
+      // Reload conversations if a new conversation was created
       loadConversations();
     }
   }
 
+  void markConversationRead(String conversationId) {
+    if (!mounted) return;
+    final updatedList = state.conversations.map((c) {
+      if (c.id == conversationId) {
+        return ConversationModel(
+          id: c.id,
+          type: c.type,
+          name: c.name,
+          description: c.description,
+          imageUrl: c.imageUrl,
+          createdAt: c.createdAt,
+          updatedAt: c.updatedAt,
+          lastMessage: c.lastMessage,
+          unreadCount: 0,
+          members: c.members,
+        );
+      }
+      return c;
+    }).toList();
+
+    state = state.copyWith(conversations: updatedList);
+  }
+
   void _handlePresenceChanged(String userId, bool isOnline) {
+    if (!mounted) return;
     final updatedList = state.conversations.map((c) {
       final updatedMembers = c.members.map((m) {
         if (m.userId == userId) {

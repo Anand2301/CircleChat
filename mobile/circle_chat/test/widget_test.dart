@@ -29,11 +29,11 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('Welcome back'), findsOneWidget);
+    expect(find.text('Welcome to CircleChat'), findsOneWidget);
     expect(find.text('Email Address'), findsOneWidget);
     expect(find.text('Password'), findsOneWidget);
     expect(find.text('Log In'), findsOneWidget);
-    expect(find.text('Register with Code'), findsOneWidget);
+    expect(find.text('Register'), findsOneWidget);
   });
 
   testWidgets('RegisterScreen renders invitation code field', (WidgetTester tester) async {
@@ -54,7 +54,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('Join CircleChat'), findsOneWidget);
-    expect(find.text('Invitation Code (e.g., CC-ABCD1234)'), findsOneWidget);
-    expect(find.text('Create Account'), findsOneWidget);
+    expect(find.text('Invitation Code'), findsOneWidget);
+    expect(find.text('Complete Registration'), findsOneWidget);
   });
 }

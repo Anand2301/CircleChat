@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/api_constants.dart';
 import '../../core/models/models.dart';
 import '../../core/network/api_client.dart';
+import '../../core/network/push_notification_service.dart';
 import '../../core/network/signalr_service.dart';
 import '../../core/storage/token_storage.dart';
 
@@ -52,6 +53,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
       try {
         await SignalRService.instance.connect();
       } catch (_) {}
+      try {
+        await PushNotificationService.instance.registerDeviceToken();
+      } catch (_) {}
     } catch (_) {
       await TokenStorage.clear();
       state = state.copyWith(isLoading: false, isAuthenticated: false);
@@ -80,6 +84,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
       state = state.copyWith(isLoading: false, isAuthenticated: true, user: user);
       try {
         await SignalRService.instance.connect();
+      } catch (_) {}
+      try {
+        await PushNotificationService.instance.registerDeviceToken();
       } catch (_) {}
       return true;
     } on ApiException catch (e) {
@@ -128,6 +135,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
       try {
         await SignalRService.instance.connect();
       } catch (_) {}
+      try {
+        await PushNotificationService.instance.registerDeviceToken();
+      } catch (_) {}
       return true;
     } on ApiException catch (e) {
       state = state.copyWith(isLoading: false, errorMessage: e.message);
@@ -139,6 +149,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> logout() async {
+    try {
+      await PushNotificationService.instance.unregisterDeviceToken();
+    } catch (_) {}
+
     try {
       final refreshToken = await TokenStorage.getRefreshToken();
       if (refreshToken != null) {

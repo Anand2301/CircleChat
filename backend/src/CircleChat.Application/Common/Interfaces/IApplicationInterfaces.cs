@@ -55,16 +55,23 @@ public interface IPresenceService
     Task<IReadOnlyDictionary<string, bool>> GetUsersOnlineStatusAsync(IEnumerable<string> userIds);
 }
 
+public class PushNotificationResult
+{
+    public int SuccessCount { get; set; }
+    public int FailureCount { get; set; }
+    public List<string> InvalidTokens { get; set; } = new();
+}
+
 public interface IPushNotificationService
 {
-    Task SendNotificationAsync(
+    Task<bool> SendNotificationAsync(
         string deviceToken,
         string title,
         string body,
         Dictionary<string, string>? data = null,
         CancellationToken cancellationToken = default);
 
-    Task SendMulticastNotificationAsync(
+    Task<PushNotificationResult> SendMulticastNotificationAsync(
         IEnumerable<string> deviceTokens,
         string title,
         string body,
@@ -74,7 +81,7 @@ public interface IPushNotificationService
 
 public interface ISignalRNotifier
 {
-    Task NotifyNewMessageAsync(Guid conversationId, object messageDto);
+    Task NotifyNewMessageAsync(Guid conversationId, object messageDto, IEnumerable<string>? memberUserIds = null);
     Task NotifyMessageEditedAsync(Guid conversationId, Guid messageId, string newContent, DateTime updatedAt);
     Task NotifyMessageDeletedAsync(Guid conversationId, Guid messageId);
     Task NotifyReactionUpdatedAsync(Guid conversationId, Guid messageId, string reaction, string userId, bool added);
