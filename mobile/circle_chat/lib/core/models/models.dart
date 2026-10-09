@@ -136,10 +136,13 @@ class ConversationModel {
       updatedAt: json['updatedAt'] != null
           ? DateTime.tryParse(json['updatedAt'].toString()) ?? DateTime.now()
           : DateTime.now(),
-      lastMessage: json['lastMessage'] != null ? MessageModel.fromJson(json['lastMessage']) : null,
+      lastMessage: json['lastMessage'] != null && json['lastMessage'] is Map
+          ? MessageModel.fromJson(Map<String, dynamic>.from(json['lastMessage'] as Map))
+          : null,
       unreadCount: json['unreadCount'] as int? ?? 0,
       members: (json['members'] as List<dynamic>? ?? [])
-          .map((m) => ConversationMemberModel.fromJson(m))
+          .whereType<Map>()
+          .map((m) => ConversationMemberModel.fromJson(Map<String, dynamic>.from(m)))
           .toList(),
     );
   }
@@ -247,8 +250,8 @@ class MessageModel {
       content: json['content'] as String? ?? '',
       messageType: json['messageType'] as int? ?? 0,
       replyToMessageId: json['replyToMessageId'] as String?,
-      replyToMessage: json['replyToMessage'] != null
-          ? MessageModel.fromJson(json['replyToMessage'])
+      replyToMessage: json['replyToMessage'] != null && json['replyToMessage'] is Map
+          ? MessageModel.fromJson(Map<String, dynamic>.from(json['replyToMessage'] as Map))
           : null,
       createdAt: json['createdAt'] != null
           ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
@@ -259,10 +262,12 @@ class MessageModel {
       isDeleted: json['isDeleted'] as bool? ?? false,
       deliveryStatus: json['deliveryStatus'] as int? ?? 0,
       reactions: (json['reactions'] as List<dynamic>? ?? [])
-          .map((r) => MessageReactionModel.fromJson(r))
+          .whereType<Map>()
+          .map((r) => MessageReactionModel.fromJson(Map<String, dynamic>.from(r)))
           .toList(),
       attachments: (json['attachments'] as List<dynamic>? ?? [])
-          .map((a) => AttachmentModel.fromJson(a))
+          .whereType<Map>()
+          .map((a) => AttachmentModel.fromJson(Map<String, dynamic>.from(a)))
           .toList(),
     );
   }

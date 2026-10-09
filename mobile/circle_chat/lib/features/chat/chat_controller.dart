@@ -68,10 +68,13 @@ class ChatNotifier extends StateNotifier<ChatState> {
       if (!mounted) return;
       try {
         final msg = MessageModel.fromJson(data);
-        if (msg.conversationId == conversationId) {
+        if (msg.conversationId.trim().toLowerCase() == conversationId.trim().toLowerCase()) {
+          debugPrint('[ChatNotifier] Received message ${msg.id} for active conversation $conversationId');
           _onNewMessage(msg);
         }
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('[ChatNotifier] Error parsing message: $e');
+      }
     }));
 
     _unsubscribers.add(SignalRService.instance.addEditListener((msgId, newContent, updatedAt) {
@@ -91,7 +94,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
     _unsubscribers.add(SignalRService.instance.addTypingListener((convId, userId, displayName, isTyping) {
       if (!mounted) return;
-      if (convId == conversationId && userId != currentUserId) {
+      if (convId.trim().toLowerCase() == conversationId.trim().toLowerCase() && userId != currentUserId) {
         state = state.copyWith(typingUserName: isTyping ? displayName : null);
       }
     }));

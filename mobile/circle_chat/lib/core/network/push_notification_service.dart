@@ -125,7 +125,9 @@ class PushNotificationService {
     final convId = data['conversationId']?.toString();
 
     // If the recipient is actively viewing this exact conversation, do not show a banner
-    if (convId != null && convId == activeConversationId) {
+    if (convId != null &&
+        activeConversationId != null &&
+        convId.trim().toLowerCase() == activeConversationId!.trim().toLowerCase()) {
       return;
     }
 

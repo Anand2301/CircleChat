@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:circle_chat/core/constants/api_constants.dart';
+import 'package:circle_chat/core/models/models.dart';
 import 'package:circle_chat/core/network/api_client.dart';
 import 'package:circle_chat/core/network/signalr_service.dart';
 import 'package:circle_chat/core/storage/token_storage.dart';
@@ -275,6 +276,46 @@ void main() {
       expect(notifier.state.conversations.firstWhere((c) => c.id == 'conv-2').unreadCount, 0);
 
       notifier.dispose();
+    });
+
+    test('MessageModel.fromJson safely parses Map<dynamic, dynamic> without TypeError', () {
+      final Map<dynamic, dynamic> dynamicMap = {
+        'id': 'msg-dyn-1',
+        'conversationId': 'CONV-GUID-123',
+        'senderId': 'USER-1',
+        'senderDisplayName': 'Bob',
+        'content': 'Test message with dynamic map',
+        'messageType': 0,
+        'createdAt': '2026-10-09T10:00:00Z',
+        'deliveryStatus': 1,
+        'reactions': <dynamic>[
+          <dynamic, dynamic>{
+            'id': 'rx-1',
+            'userId': 'USER-2',
+            'displayName': 'Alice',
+            'reaction': '👍',
+            'createdAt': '2026-10-09T10:01:00Z',
+          }
+        ],
+        'attachments': <dynamic>[
+          <dynamic, dynamic>{
+            'id': 'att-1',
+            'fileName': 'photo.png',
+            'storagePath': '/photos/1',
+            'downloadUrl': 'https://example.com/photos/1',
+            'contentType': 'image/png',
+            'fileSize': 1024,
+          }
+        ],
+      };
+
+      final msg = MessageModel.fromJson(Map<String, dynamic>.from(dynamicMap));
+      expect(msg.id, 'msg-dyn-1');
+      expect(msg.conversationId, 'CONV-GUID-123');
+      expect(msg.reactions.length, 1);
+      expect(msg.reactions.first.reaction, '👍');
+      expect(msg.attachments.length, 1);
+      expect(msg.attachments.first.fileName, 'photo.png');
     });
   });
 }

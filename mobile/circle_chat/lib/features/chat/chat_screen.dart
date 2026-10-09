@@ -241,6 +241,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<ChatState>(chatProvider(widget.conversation.id), (previous, next) {
+      if (previous != null && next.messages.length > previous.messages.length) {
+        if (_scrollController.hasClients && _scrollController.offset < 100) {
+          _scrollController.animateTo(
+            0,
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOut,
+          );
+        }
+      }
+    });
+
     final chatState = ref.watch(chatProvider(widget.conversation.id));
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isDirect = widget.conversation.type == 0;

@@ -144,12 +144,23 @@ class SignalRService {
     }
   }
 
+  Map<String, dynamic> _safeMap(dynamic raw) {
+    if (raw == null) return {};
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) {
+      return raw.map((key, value) => MapEntry(key.toString(), value));
+    }
+    return {};
+  }
+
   Future<void> _restoreSubscriptions() async {
     if (!_isConnected || _hubConnection?.state != HubConnectionState.Connected) return;
     for (final convId in _activeConversationIds.toList()) {
       try {
         await _hubConnection?.invoke('JoinConversation', args: [convId]);
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('[SignalR] Restore subscription error for $convId: $e');
+      }
     }
   }
 
@@ -157,14 +168,19 @@ class SignalRService {
     _hubConnection?.on('ReceiveMessage', (arguments) {
       if (arguments != null && arguments.isNotEmpty) {
         try {
-          final data = arguments[0] as Map<String, dynamic>;
+          final data = _safeMap(arguments[0]);
+          debugPrint('[SignalR] ReceiveMessage payload parsed for conv: ${data['conversationId']}, msgId: ${data['id']}');
           final cbs = List<OnMessageReceivedCallback>.from(_messageCallbacks);
           for (final cb in cbs) {
             try {
               cb(data);
-            } catch (_) {}
+            } catch (e) {
+              debugPrint('[SignalR] Message callback error: $e');
+            }
           }
-        } catch (_) {}
+        } catch (e) {
+          debugPrint('[SignalR] ReceiveMessage parse error: $e');
+        }
       }
     });
 
@@ -178,9 +194,13 @@ class SignalRService {
           for (final cb in cbs) {
             try {
               cb(id, content, updatedAt);
-            } catch (_) {}
+            } catch (e) {
+              debugPrint('[SignalR] Edit callback error: $e');
+            }
           }
-        } catch (_) {}
+        } catch (e) {
+          debugPrint('[SignalR] MessageEdited parse error: $e');
+        }
       }
     });
 
@@ -192,9 +212,13 @@ class SignalRService {
           for (final cb in cbs) {
             try {
               cb(id);
-            } catch (_) {}
+            } catch (e) {
+              debugPrint('[SignalR] Delete callback error: $e');
+            }
           }
-        } catch (_) {}
+        } catch (e) {
+          debugPrint('[SignalR] MessageDeleted parse error: $e');
+        }
       }
     });
 
@@ -209,9 +233,13 @@ class SignalRService {
           for (final cb in cbs) {
             try {
               cb(id, reaction, userId, added);
-            } catch (_) {}
+            } catch (e) {
+              debugPrint('[SignalR] Reaction callback error: $e');
+            }
           }
-        } catch (_) {}
+        } catch (e) {
+          debugPrint('[SignalR] ReactionUpdated parse error: $e');
+        }
       }
     });
 
@@ -226,9 +254,13 @@ class SignalRService {
           for (final cb in cbs) {
             try {
               cb(convId, userId, displayName, isTyping);
-            } catch (_) {}
+            } catch (e) {
+              debugPrint('[SignalR] Typing callback error: $e');
+            }
           }
-        } catch (_) {}
+        } catch (e) {
+          debugPrint('[SignalR] UserTyping parse error: $e');
+        }
       }
     });
 
@@ -242,9 +274,13 @@ class SignalRService {
           for (final cb in cbs) {
             try {
               cb(userId, isOnline, lastSeen);
-            } catch (_) {}
+            } catch (e) {
+              debugPrint('[SignalR] Presence callback error: $e');
+            }
           }
-        } catch (_) {}
+        } catch (e) {
+          debugPrint('[SignalR] UserPresenceChanged parse error: $e');
+        }
       }
     });
 
@@ -258,28 +294,38 @@ class SignalRService {
           for (final cb in cbs) {
             try {
               cb(msgId, userId, readAt);
-            } catch (_) {}
+            } catch (e) {
+              debugPrint('[SignalR] Read callback error: $e');
+            }
           }
-        } catch (_) {}
+        } catch (e) {
+          debugPrint('[SignalR] MessageRead parse error: $e');
+        }
       }
     });
   }
 
   Future<void> joinConversation(String conversationId) async {
-    _activeConversationIds.add(conversationId);
+    final normalizedId = conversationId.trim().toLowerCase();
+    _activeConversationIds.add(normalizedId);
     if (_isConnected && _hubConnection?.state == HubConnectionState.Connected) {
       try {
-        await _hubConnection?.invoke('JoinConversation', args: [conversationId]);
-      } catch (_) {}
+        await _hubConnection?.invoke('JoinConversation', args: [normalizedId]);
+      } catch (e) {
+        debugPrint('[SignalR] JoinConversation error for $normalizedId: $e');
+      }
     }
   }
 
   Future<void> leaveConversation(String conversationId) async {
-    _activeConversationIds.remove(conversationId);
+    final normalizedId = conversationId.trim().toLowerCase();
+    _activeConversationIds.remove(normalizedId);
     if (_isConnected && _hubConnection?.state == HubConnectionState.Connected) {
       try {
-        await _hubConnection?.invoke('LeaveConversation', args: [conversationId]);
-      } catch (_) {}
+        await _hubConnection?.invoke('LeaveConversation', args: [normalizedId]);
+      } catch (e) {
+        debugPrint('[SignalR] LeaveConversation error for $normalizedId: $e');
+      }
     }
   }
 

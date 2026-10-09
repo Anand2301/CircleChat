@@ -98,7 +98,8 @@ class ConversationsNotifier extends StateNotifier<ConversationsState> {
   void _handleIncomingMessage(MessageModel msg) {
     if (!mounted) return;
     final updatedList = List<ConversationModel>.from(state.conversations);
-    final index = updatedList.indexWhere((c) => c.id == msg.conversationId);
+    final targetId = msg.conversationId.trim().toLowerCase();
+    final index = updatedList.indexWhere((c) => c.id.trim().toLowerCase() == targetId);
 
     if (index != -1) {
       final old = updatedList[index];
@@ -126,8 +127,9 @@ class ConversationsNotifier extends StateNotifier<ConversationsState> {
 
   void markConversationRead(String conversationId) {
     if (!mounted) return;
+    final targetId = conversationId.trim().toLowerCase();
     final updatedList = state.conversations.map((c) {
-      if (c.id == conversationId) {
+      if (c.id.trim().toLowerCase() == targetId) {
         return ConversationModel(
           id: c.id,
           type: c.type,
