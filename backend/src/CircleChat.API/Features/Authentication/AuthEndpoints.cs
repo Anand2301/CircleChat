@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using CircleChat.Application.Common.Interfaces;
 using CircleChat.Application.DTOs;
 using CircleChat.Application.Validation;
@@ -6,8 +8,207 @@ using CircleChat.Domain.Entities;
 using FastEndpoints;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace CircleChat.API.Features.Authentication;
+
+public class BootstrapEndpoint : Endpoint<BootstrapRegisterRequest, ApiResponse<AuthResponse>>
+{
+    private static readonly SemaphoreSlim _bootstrapGate = new(1, 1);
+
+    private readonly UserManager<ApplicationUser> _userManager;
+    private readonly IApplicationDbContext _dbContext;
+    private readonly ITokenService _tokenService;
+    private readonly IConfiguration _configuration;
+    private readonly ILogger<BootstrapEndpoint> _logger;
+
+    public BootstrapEndpoint(
+        UserManager<ApplicationUser> userManager,
+        IApplicationDbContext dbContext,
+        ITokenService tokenService,
+        IConfiguration configuration,
+        ILogger<BootstrapEndpoint> logger)
+    {
+        _userManager = userManager;
+        _dbContext = dbContext;
+        _tokenService = tokenService;
+        _configuration = configuration;
+        _logger = logger;
+    }
+
+    public override void Configure()
+    {
+        Post("/api/auth/bootstrap");
+        AllowAnonymous();
+        Validator<BootstrapRegisterRequestValidator>();
+    }
+
+    public override async Task HandleAsync(BootstrapRegisterRequest req, CancellationToken ct)
+    {
+        // 1. Verify bootstrap secret is configured on the server
+        var configuredSecret = _configuration["Bootstrap:Secret"]
+            ?? _configuration["BOOTSTRAP_SECRET"]
+            ?? _configuration["BootstrapSecret"];
+
+        if (string.IsNullOrWhiteSpace(configuredSecret))
+        {
+            _logger.LogWarning("Bootstrap endpoint invoked, but no bootstrap secret is configured on the server.");
+            await SendResultAsync(TypedResults.BadRequest(
+                ApiResponse<AuthResponse>.Fail("Bootstrap registration is disabled or not configured.")));
+            return;
+        }
+
+        // 2. Constant-time comparison of the provided secret
+        var configuredBytes = Encoding.UTF8.GetBytes(configuredSecret);
+        var providedBytes = Encoding.UTF8.GetBytes(req.BootstrapSecret);
+
+        if (configuredBytes.Length != providedBytes.Length ||
+            !CryptographicOperations.FixedTimeEquals(configuredBytes, providedBytes))
+        {
+            _logger.LogWarning("Bootstrap registration failed due to invalid secret.");
+            await SendResultAsync(TypedResults.BadRequest(
+                ApiResponse<AuthResponse>.Fail("Invalid bootstrap secret.")));
+            return;
+        }
+
+        // 3. Concurrency serialization gate (in-process)
+        await _bootstrapGate.WaitAsync(ct);
+        try
+        {
+            // Fast pre-check: verify no users exist before starting transaction
+            if (await _dbContext.Users.AnyAsync(ct))
+            {
+                await SendResultAsync(TypedResults.BadRequest(
+                    ApiResponse<AuthResponse>.Fail("First-user bootstrap is only permitted when no users exist in the system.")));
+                return;
+            }
+
+            // 4. If using a relational database (PostgreSQL on Render / Neon), acquire a transaction and advisory lock
+            Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? transaction = null;
+            if (_dbContext.IsRelational())
+            {
+                transaction = await _dbContext.BeginTransactionAsync(ct);
+                await _dbContext.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(742910)", ct);
+
+                // Atomic re-check under lock / transaction
+                if (await _dbContext.Users.AnyAsync(ct))
+                {
+                    await transaction.RollbackAsync(ct);
+                    await SendResultAsync(TypedResults.BadRequest(
+                        ApiResponse<AuthResponse>.Fail("First-user bootstrap is only permitted when no users exist in the system.")));
+                    return;
+                }
+            }
+
+            try
+            {
+                // 5. Create first user
+                var user = new ApplicationUser
+                {
+                    UserName = req.Email,
+                    Email = req.Email,
+                    FullName = req.FullName,
+                    DisplayName = req.DisplayName,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                var createResult = await _userManager.CreateAsync(user, req.Password);
+                if (!createResult.Succeeded)
+                {
+                    if (transaction != null)
+                    {
+                        await transaction.RollbackAsync(ct);
+                    }
+                    var errors = createResult.Errors.Select(e => e.Description).ToList();
+                    await SendResultAsync(TypedResults.BadRequest(
+                        ApiResponse<AuthResponse>.Fail("Failed to register bootstrap user.", 400, errors)));
+                    return;
+                }
+
+                // 6. Generate initial invitation code using the new user's real ID
+                var inviteCode = string.IsNullOrWhiteSpace(req.InitialInvitationCode)
+                    ? "CC-FOUNDER2026"
+                    : req.InitialInvitationCode.Trim().ToUpperInvariant();
+
+                var initialInvitation = new Invitation
+                {
+                    Code = inviteCode,
+                    CreatedById = user.Id,
+                    MaxUses = 50,
+                    UsedCount = 0,
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+                _dbContext.Invitations.Add(initialInvitation);
+
+                // 7. Generate tokens
+                var accessToken = _tokenService.GenerateAccessToken(user);
+                var rawRefreshToken = _tokenService.GenerateRefreshToken();
+                var refreshTokenHash = _tokenService.HashToken(rawRefreshToken);
+
+                var refreshTokenEntity = new RefreshToken
+                {
+                    UserId = user.Id,
+                    TokenHash = refreshTokenHash,
+                    ExpiresAt = DateTime.UtcNow.AddDays(30)
+                };
+                _dbContext.RefreshTokens.Add(refreshTokenEntity);
+
+                await _dbContext.SaveChangesAsync(ct);
+                if (transaction != null)
+                {
+                    await transaction.CommitAsync(ct);
+                }
+
+                _logger.LogInformation("First-user bootstrap completed successfully for {Email}. Initial invitation code: {Code}", user.Email, inviteCode);
+
+                var response = new AuthResponse
+                {
+                    AccessToken = accessToken,
+                    RefreshToken = rawRefreshToken,
+                    ExpiresAt = DateTime.UtcNow.AddHours(24),
+                    InitialInvitationCode = inviteCode,
+                    User = new UserProfileDto
+                    {
+                        Id = user.Id,
+                        Email = user.Email,
+                        FullName = user.FullName,
+                        DisplayName = user.DisplayName,
+                        Bio = user.Bio,
+                        ProfileImageUrl = user.ProfileImageUrl,
+                        IsOnline = true,
+                        CreatedAt = user.CreatedAt
+                    }
+                };
+
+                await SendOkAsync(ApiResponse<AuthResponse>.Ok(
+                    response,
+                    $"Bootstrap registration successful. Initial invitation code generated: {inviteCode}"), ct);
+            }
+            catch
+            {
+                if (transaction != null)
+                {
+                    await transaction.RollbackAsync(ct);
+                }
+                throw;
+            }
+            finally
+            {
+                if (transaction != null)
+                {
+                    await transaction.DisposeAsync();
+                }
+            }
+        }
+        finally
+        {
+            _bootstrapGate.Release();
+        }
+    }
+}
 
 public class RegisterEndpoint : Endpoint<RegisterRequest, ApiResponse<AuthResponse>>
 {

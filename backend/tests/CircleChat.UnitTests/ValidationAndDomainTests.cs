@@ -163,4 +163,80 @@ public class ValidationAndDomainTests
         activeToken.IsRevoked.Should().BeTrue();
         activeToken.IsActive.Should().BeFalse();
     }
+
+    [Fact]
+    public void BootstrapValidator_WhenValidRequest_PassesValidation()
+    {
+        var validator = new BootstrapRegisterRequestValidator();
+        var request = new BootstrapRegisterRequest
+        {
+            BootstrapSecret = "RenderSuperSecretKey2026!",
+            FullName = "First Founder",
+            DisplayName = "Founder",
+            Email = "founder@circlechat.test",
+            Password = "SecurePassword123!",
+            ConfirmPassword = "SecurePassword123!",
+            InitialInvitationCode = "CC-FOUNDER2026"
+        };
+
+        var result = validator.Validate(request);
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void BootstrapValidator_WhenSecretMissing_FailsValidation()
+    {
+        var validator = new BootstrapRegisterRequestValidator();
+        var request = new BootstrapRegisterRequest
+        {
+            BootstrapSecret = "",
+            FullName = "First Founder",
+            DisplayName = "Founder",
+            Email = "founder@circlechat.test",
+            Password = "SecurePassword123!",
+            ConfirmPassword = "SecurePassword123!"
+        };
+
+        var result = validator.Validate(request);
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "BootstrapSecret");
+    }
+
+    [Fact]
+    public void BootstrapValidator_WhenPasswordsMismatch_FailsValidation()
+    {
+        var validator = new BootstrapRegisterRequestValidator();
+        var request = new BootstrapRegisterRequest
+        {
+            BootstrapSecret = "RenderSuperSecretKey2026!",
+            FullName = "First Founder",
+            DisplayName = "Founder",
+            Email = "founder@circlechat.test",
+            Password = "SecurePassword123!",
+            ConfirmPassword = "WrongPassword123!"
+        };
+
+        var result = validator.Validate(request);
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "ConfirmPassword");
+    }
+
+    [Fact]
+    public void BootstrapValidator_WhenPasswordTooShort_FailsValidation()
+    {
+        var validator = new BootstrapRegisterRequestValidator();
+        var request = new BootstrapRegisterRequest
+        {
+            BootstrapSecret = "RenderSuperSecretKey2026!",
+            FullName = "First Founder",
+            DisplayName = "Founder",
+            Email = "founder@circlechat.test",
+            Password = "123",
+            ConfirmPassword = "123"
+        };
+
+        var result = validator.Validate(request);
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "Password");
+    }
 }

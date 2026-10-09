@@ -33,6 +33,39 @@ public class RegisterRequestValidator : AbstractValidator<RegisterRequest>
     }
 }
 
+public class BootstrapRegisterRequestValidator : AbstractValidator<BootstrapRegisterRequest>
+{
+    public BootstrapRegisterRequestValidator()
+    {
+        RuleFor(x => x.BootstrapSecret)
+            .NotEmpty().WithMessage("Bootstrap secret is required.");
+
+        RuleFor(x => x.FullName)
+            .NotEmpty().WithMessage("Full name is required.")
+            .MaximumLength(100);
+
+        RuleFor(x => x.DisplayName)
+            .NotEmpty().WithMessage("Display name is required.")
+            .MinimumLength(2)
+            .MaximumLength(50);
+
+        RuleFor(x => x.Email)
+            .NotEmpty().WithMessage("Email is required.")
+            .EmailAddress().WithMessage("A valid email address is required.");
+
+        RuleFor(x => x.Password)
+            .NotEmpty().WithMessage("Password is required.")
+            .MinimumLength(6).WithMessage("Password must be at least 6 characters.");
+
+        RuleFor(x => x.ConfirmPassword)
+            .Equal(x => x.Password).WithMessage("Passwords do not match.");
+
+        RuleFor(x => x.InitialInvitationCode)
+            .MaximumLength(32).WithMessage("Initial invitation code must not exceed 32 characters.")
+            .When(x => !string.IsNullOrEmpty(x.InitialInvitationCode));
+    }
+}
+
 public class LoginRequestValidator : AbstractValidator<LoginRequest>
 {
     public LoginRequestValidator()

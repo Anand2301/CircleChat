@@ -17,6 +17,9 @@ public interface IApplicationDbContext
     DbSet<Invitation> Invitations { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+    Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);
+    bool IsRelational();
+    Task<int> ExecuteSqlRawAsync(string sql, CancellationToken cancellationToken = default);
 }
 
 public interface ITokenService

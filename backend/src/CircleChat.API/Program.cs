@@ -122,21 +122,21 @@ app.UseSwaggerGen();
 
 app.MapHub<ChatHub>("/hubs/chat");
 
-// Initial database seeding if needed (e.g. initial master invitation code)
+// Apply database migrations on startup if running against a relational database
 using (var scope = app.Services.CreateScope())
 {
     try
     {
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        // Check if database can connect
-        if (db.Database.CanConnect())
+        if (db.Database.IsRelational())
         {
             await db.Database.MigrateAsync();
+            Log.Information("Database migrations applied successfully on startup.");
         }
     }
     catch (Exception ex)
     {
-        Log.Warning("Database migration on startup skipped: {Message}", ex.Message);
+        Log.Warning("Database migration on startup skipped or failed: {Message}", ex.Message);
     }
 }
 

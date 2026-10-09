@@ -22,6 +22,7 @@ public class AuthResponse
     public string AccessToken { get; set; } = string.Empty;
     public string RefreshToken { get; set; } = string.Empty;
     public DateTime ExpiresAt { get; set; }
+    public string? InitialInvitationCode { get; set; }
     public UserProfileDto User { get; set; } = null!;
 }
 
@@ -39,6 +40,17 @@ public class RegisterRequest
     public string Email { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
     public string ConfirmPassword { get; set; } = string.Empty;
+}
+
+public class BootstrapRegisterRequest
+{
+    public string BootstrapSecret { get; set; } = string.Empty;
+    public string FullName { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string Password { get; set; } = string.Empty;
+    public string ConfirmPassword { get; set; } = string.Empty;
+    public string? InitialInvitationCode { get; set; }
 }
 
 public class RefreshTokenRequest

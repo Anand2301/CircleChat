@@ -2,6 +2,7 @@ using CircleChat.Application.Common.Interfaces;
 using CircleChat.Domain.Entities;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace CircleChat.Infrastructure.Persistence;
 
@@ -176,4 +177,13 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             entity.HasIndex(i => i.Code).IsUnique();
         });
     }
+
+    public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+        => Database.BeginTransactionAsync(cancellationToken);
+
+    public bool IsRelational()
+        => Database.IsRelational();
+
+    public Task<int> ExecuteSqlRawAsync(string sql, CancellationToken cancellationToken = default)
+        => Database.ExecuteSqlRawAsync(sql, cancellationToken);
 }
