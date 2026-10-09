@@ -20,7 +20,7 @@ class SettingsScreen extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Enter the backend API server address (e.g., http://10.0.2.2:5000 for Android emulator or http://192.168.1.X:5000 for physical phone)',
+              'Default production server: https://circlechat-49kc.onrender.com\nYou can customize this for staging or local testing if needed.',
               style: TextStyle(fontSize: 12, color: Colors.grey),
             ),
             const SizedBox(height: 12),

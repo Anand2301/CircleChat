@@ -1,6 +1,9 @@
 class ApiConstants {
-  // By default, for Android Emulator use 10.0.2.2. Can be updated dynamically in Settings.
-  static String baseUrl = 'http://10.0.2.2:5000';
+  // Production API Base URL
+  static const String defaultBaseUrl = 'https://circlechat-49kc.onrender.com';
+  static String baseUrl = defaultBaseUrl;
+
+  static void resetToDefault() => baseUrl = defaultBaseUrl;
 
   static String get authRegister => '$baseUrl/api/auth/register';
   static String get authLogin => '$baseUrl/api/auth/login';

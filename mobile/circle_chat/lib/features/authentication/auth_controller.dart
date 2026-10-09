@@ -49,7 +49,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final data = await ApiClient.get(ApiConstants.usersMe);
       final user = UserModel.fromJson(data);
       state = state.copyWith(isLoading: false, isAuthenticated: true, user: user);
-      await SignalRService.instance.connect();
+      try {
+        await SignalRService.instance.connect();
+      } catch (_) {}
     } catch (_) {
       await TokenStorage.clear();
       state = state.copyWith(isLoading: false, isAuthenticated: false);
@@ -76,13 +78,15 @@ class AuthNotifier extends StateNotifier<AuthState> {
       );
 
       state = state.copyWith(isLoading: false, isAuthenticated: true, user: user);
-      await SignalRService.instance.connect();
+      try {
+        await SignalRService.instance.connect();
+      } catch (_) {}
       return true;
     } on ApiException catch (e) {
       state = state.copyWith(isLoading: false, errorMessage: e.message);
       return false;
     } catch (e) {
-      state = state.copyWith(isLoading: false, errorMessage: 'Failed to connect to server.');
+      state = state.copyWith(isLoading: false, errorMessage: 'Failed to connect to server: ${e.toString()}');
       return false;
     }
   }
@@ -121,7 +125,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
       );
 
       state = state.copyWith(isLoading: false, isAuthenticated: true, user: user);
-      await SignalRService.instance.connect();
+      try {
+        await SignalRService.instance.connect();
+      } catch (_) {}
       return true;
     } on ApiException catch (e) {
       state = state.copyWith(isLoading: false, errorMessage: e.message);

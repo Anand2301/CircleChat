@@ -19,10 +19,15 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Load configured backend server URL if custom
+  // Load configured backend server URL if custom (ignoring old local dev defaults)
   final savedUrl = await TokenStorage.getSavedServerUrl();
-  if (savedUrl != null && savedUrl.isNotEmpty) {
+  if (savedUrl != null &&
+      savedUrl.isNotEmpty &&
+      !savedUrl.contains('10.0.2.2') &&
+      !savedUrl.contains('localhost')) {
     ApiConstants.baseUrl = savedUrl;
+  } else {
+    ApiConstants.resetToDefault();
   }
 
   // Initialize Firebase (safely)
