@@ -16,7 +16,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   } catch (_) {}
 }
 
-class PushNotificationService {
+class PushNotificationService with WidgetsBindingObserver {
   static PushNotificationService? _instance;
   static PushNotificationService get instance => _instance ??= PushNotificationService._();
 
@@ -26,11 +26,21 @@ class PushNotificationService {
   GlobalKey<NavigatorState>? _navigatorKey;
   String? activeConversationId;
   String? _lastRegisteredToken;
+  String? _pendingConversationId;
   bool _isInitialized = false;
+
+  AppLifecycleState _lifecycleState = AppLifecycleState.resumed;
+  bool get isInForeground => _lifecycleState == AppLifecycleState.resumed;
+  String? get pendingConversationId => _pendingConversationId;
 
   static const String notificationChannelId = 'circle_chat_messages';
   static const String notificationChannelName = 'CircleChat Messages';
   static const String notificationChannelDescription = 'Notifications for direct and group conversations';
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _lifecycleState = state;
+  }
 
   Future<void> initialize(GlobalKey<NavigatorState> navigatorKey) async {
     if (_isInitialized) {
@@ -38,6 +48,7 @@ class PushNotificationService {
       return;
     }
     _navigatorKey = navigatorKey;
+    WidgetsBinding.instance.addObserver(this);
 
     try {
       // 1. Initialize local notifications
@@ -103,10 +114,19 @@ class PushNotificationService {
       // 7. Check for initial notification message on app launch from terminated state
       final initialMessage = await messaging.getInitialMessage();
       if (initialMessage != null) {
-        // Delay slightly to allow the initial navigation route to stabilize
-        Future.delayed(const Duration(milliseconds: 600), () {
-          _handleNotificationMessage(initialMessage);
-        });
+        final convId = initialMessage.data['conversationId']?.toString();
+        if (convId != null && convId.isNotEmpty) {
+          _pendingConversationId = convId;
+        }
+      }
+
+      // Check if launched from local notification tap
+      final launchDetails = await _localNotifications.getNotificationAppLaunchDetails();
+      if (launchDetails?.didNotificationLaunchApp ?? false) {
+        final payload = launchDetails?.notificationResponse?.payload;
+        if (payload != null && payload.isNotEmpty) {
+          _pendingConversationId = payload;
+        }
       }
 
       // 8. Listen for token refresh events
@@ -120,11 +140,22 @@ class PushNotificationService {
     }
   }
 
+  void consumePendingConversation() {
+    final targetId = _pendingConversationId;
+    _pendingConversationId = null;
+    if (targetId != null && targetId.isNotEmpty) {
+      navigateToConversation(targetId);
+    }
+  }
+
   void _handleForegroundMessage(RemoteMessage message) {
+    // If not in foreground, Android native FCM payload handles the notification shade
+    if (!isInForeground) return;
+
     final data = message.data;
     final convId = data['conversationId']?.toString();
 
-    // If the recipient is actively viewing this exact conversation, do not show a banner
+    // If viewing this exact conversation, suppress heads-up notification (SignalR handles live UI)
     if (convId != null &&
         activeConversationId != null &&
         convId.trim().toLowerCase() == activeConversationId!.trim().toLowerCase()) {
@@ -139,10 +170,10 @@ class PushNotificationService {
 
     final body = message.notification?.body ?? data['content'] ?? 'New message';
 
-    // Show native local notification
-    final notificationId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    // Show native local notification with stable conversation grouping
+    final notificationId = convId != null ? (convId.hashCode.abs() % 100000) : (DateTime.now().millisecondsSinceEpoch ~/ 1000);
 
-    const androidDetails = AndroidNotificationDetails(
+    final androidDetails = AndroidNotificationDetails(
       notificationChannelId,
       notificationChannelName,
       channelDescription: notificationChannelDescription,
@@ -150,11 +181,12 @@ class PushNotificationService {
       priority: Priority.high,
       playSound: true,
       enableVibration: true,
-      showWhen: true, // Displays native arrival time in Android notification shade
+      showWhen: true,
+      tag: convId,
       icon: '@mipmap/ic_launcher',
     );
 
-    const details = NotificationDetails(android: androidDetails);
+    final details = NotificationDetails(android: androidDetails);
 
     _localNotifications.show(
       id: notificationId,
@@ -176,10 +208,26 @@ class PushNotificationService {
     final navState = _navigatorKey?.currentState;
     if (navState == null) return;
 
+    final targetId = conversationId.trim().toLowerCase();
+    // Prevent duplicate navigation if user is already actively viewing this conversation
+    if (activeConversationId != null && activeConversationId!.trim().toLowerCase() == targetId) {
+      return;
+    }
+
     try {
-      // Fetch full conversation model from backend
+      // Dismiss active local notification for this conversation
+      final notificationId = conversationId.hashCode.abs() % 100000;
+      await _localNotifications.cancel(id: notificationId, tag: conversationId);
+    } catch (_) {}
+
+    try {
+      // Fetch full authoritative conversation model from backend
       final data = await ApiClient.get(ApiConstants.conversationDetails(conversationId));
       final conv = ConversationModel.fromJson(data);
+
+      if (activeConversationId != null && activeConversationId!.trim().toLowerCase() == targetId) {
+        return;
+      }
 
       navState.push(
         MaterialPageRoute(
@@ -187,7 +235,10 @@ class PushNotificationService {
         ),
       );
     } catch (_) {
-      // If fetching fails, create minimal fallback conversation model
+      // Fallback: minimal valid conversation model
+      if (activeConversationId != null && activeConversationId!.trim().toLowerCase() == targetId) {
+        return;
+      }
       final fallbackConv = ConversationModel(
         id: conversationId,
         type: 0,

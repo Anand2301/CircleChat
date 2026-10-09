@@ -173,13 +173,29 @@ public class FirebasePushNotificationService : IPushNotificationService
         var result = new PushNotificationResult();
         if (!tokenList.Any()) return result;
 
-        try
+        if (FirebaseApp.DefaultInstance == null)
         {
-            if (FirebaseApp.DefaultInstance != null)
+            result.SuccessCount = tokenList.Count;
+            result.FailureCount = 0;
+            _logger.LogInformation("[Dev Multicast Notification] To {Count} devices | Title: {Title} | Body: {Body}",
+                tokenList.Count, title, body);
+            return result;
+        }
+
+        const int maxRetries = 2;
+        int attempt = 0;
+        var tokensToProcess = new List<string>(tokenList);
+
+        while (tokensToProcess.Any() && attempt <= maxRetries && !cancellationToken.IsCancellationRequested)
+        {
+            attempt++;
+            var nextRetryTokens = new List<string>();
+
+            try
             {
                 var message = new MulticastMessage
                 {
-                    Tokens = tokenList,
+                    Tokens = tokensToProcess,
                     Notification = new Notification { Title = title, Body = body },
                     Data = data ?? new Dictionary<string, string>(),
                     Android = new AndroidConfig
@@ -197,18 +213,17 @@ public class FirebasePushNotificationService : IPushNotificationService
                 };
 
                 var batchResponse = await FirebaseMessaging.DefaultInstance.SendEachForMulticastAsync(message, cancellationToken);
-                result.SuccessCount = batchResponse.SuccessCount;
-                result.FailureCount = batchResponse.FailureCount;
+                result.SuccessCount += batchResponse.SuccessCount;
 
-                _logger.LogInformation("Multicast push sent to {Total} devices. Success: {SuccessCount}, Failures: {FailureCount}",
-                    tokenList.Count, batchResponse.SuccessCount, batchResponse.FailureCount);
+                _logger.LogInformation("Multicast push attempt {Attempt}/{MaxRetries} sent to {Count} devices. Success: {Success}, Failures: {Failures}",
+                    attempt, maxRetries + 1, tokensToProcess.Count, batchResponse.SuccessCount, batchResponse.FailureCount);
 
                 for (int i = 0; i < batchResponse.Responses.Count; i++)
                 {
                     var resp = batchResponse.Responses[i];
+                    var token = tokensToProcess[i];
                     if (!resp.IsSuccess)
                     {
-                        var token = tokenList[i];
                         if (resp.Exception != null)
                         {
                             var fcmCode = resp.Exception.MessagingErrorCode;
@@ -219,25 +234,48 @@ public class FirebasePushNotificationService : IPushNotificationService
                                 fcmCode == MessagingErrorCode.InvalidArgument ||
                                 fcmCode == MessagingErrorCode.SenderIdMismatch)
                             {
-                                result.InvalidTokens.Add(token);
+                                if (!result.InvalidTokens.Contains(token))
+                                {
+                                    result.InvalidTokens.Add(token);
+                                }
                             }
+                            else if (fcmCode == MessagingErrorCode.Unavailable ||
+                                     fcmCode == MessagingErrorCode.Internal ||
+                                     fcmCode == MessagingErrorCode.QuotaExceeded)
+                            {
+                                if (attempt <= maxRetries)
+                                {
+                                    nextRetryTokens.Add(token);
+                                }
+                            }
+                        }
+                        else if (attempt <= maxRetries)
+                        {
+                            nextRetryTokens.Add(token);
                         }
                     }
                 }
             }
-            else
+            catch (Exception ex) when (attempt <= maxRetries && !cancellationToken.IsCancellationRequested)
             {
-                result.SuccessCount = tokenList.Count;
-                result.FailureCount = 0;
-                _logger.LogInformation("[Dev Multicast Notification] To {Count} devices | Title: {Title} | Body: {Body}",
-                    tokenList.Count, title, body);
+                _logger.LogWarning(ex, "Transient exception sending multicast push notifications on attempt {Attempt}. Retrying batch.", attempt);
+                nextRetryTokens = new List<string>(tokensToProcess);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to send multicast push notifications to {Count} devices on attempt {Attempt}", tokensToProcess.Count, attempt);
+                break;
+            }
+
+            tokensToProcess = nextRetryTokens;
+            if (tokensToProcess.Any() && attempt <= maxRetries)
+            {
+                var delayMs = attempt * 500; // 500ms, then 1000ms
+                await Task.Delay(delayMs, cancellationToken);
             }
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to send multicast push notifications to {Count} devices", tokenList.Count);
-        }
 
+        result.FailureCount = tokenList.Count - result.SuccessCount;
         return result;
     }
 }

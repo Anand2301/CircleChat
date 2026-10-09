@@ -23,7 +23,7 @@ class ChatScreen extends ConsumerStatefulWidget {
   ConsumerState<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends ConsumerState<ChatScreen> {
+class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObserver {
   final _textController = TextEditingController();
   final _scrollController = ScrollController();
   final _picker = ImagePicker();
@@ -36,6 +36,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     PushNotificationService.instance.activeConversationId = widget.conversation.id;
     _loadCurrentUserId();
     _scrollController.addListener(_onScroll);
@@ -45,6 +46,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ref.read(conversationsProvider.notifier).markConversationRead(widget.conversation.id);
       }
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      PushNotificationService.instance.activeConversationId = widget.conversation.id;
+      ref.read(chatProvider(widget.conversation.id).notifier).syncMissedMessages();
+      ref.read(conversationsProvider.notifier).markConversationRead(widget.conversation.id);
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      if (PushNotificationService.instance.activeConversationId == widget.conversation.id) {
+        PushNotificationService.instance.activeConversationId = null;
+      }
+    }
   }
 
   void _handleTextChanged() {
@@ -67,6 +81,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     if (PushNotificationService.instance.activeConversationId == widget.conversation.id) {
       PushNotificationService.instance.activeConversationId = null;
     }

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -124,6 +125,21 @@ void main() {
 
       service.activeConversationId = null;
       expect(service.activeConversationId, isNull);
+    });
+
+    test('pendingConversationId and lifecycle state tracking', () {
+      final service = PushNotificationService.instance;
+      expect(service.isInForeground, isTrue);
+
+      service.didChangeAppLifecycleState(AppLifecycleState.paused);
+      expect(service.isInForeground, isFalse);
+
+      service.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      expect(service.isInForeground, isTrue);
+
+      // Verify pending conversation routing consumption
+      service.consumePendingConversation(); // When null, does not throw
+      expect(service.pendingConversationId, isNull);
     });
   });
 }

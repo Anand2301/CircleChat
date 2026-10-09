@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/network/push_notification_service.dart';
 import '../../core/theme/app_theme.dart';
 import 'auth_controller.dart';
 import 'login_screen.dart';
@@ -28,6 +29,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const HomeScreen()),
         );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          PushNotificationService.instance.consumePendingConversation();
+        });
       } else {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const LoginScreen()),
